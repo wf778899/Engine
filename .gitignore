@@ -1,0 +1,13 @@
+*.dll
+*.exe
+*.exp
+*.ilk
+*.iobj
+*.ipdb
+*.lib
+*.log
+*.obj
+*.pdb
+*.user
+.vs
+intermediate/
