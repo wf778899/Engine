@@ -1,7 +1,6 @@
 #include "RegionsList_Tester.h"
 #include "Error_Custom.h"
 #include "Error_RegionsList.h"
-//#include "Utilites.hpp"
 #include "Globals.h"
 #include "LogInfo.h"
 #include "LogError.h"
@@ -11,9 +10,11 @@
 #include <array>
 #include <iostream>
 #include <fstream>
+#include <ppl.h>
+#include <ppltasks.h>
 #include <string>
-#include <typeinfo>
 #include <time.h>
+#include <typeinfo>
 
 
 using Ins_complex =    Globals::Ins_complex;
@@ -23,55 +24,36 @@ using FieldState =     Globals::Ins_complex::FieldState;
 using namespace std::filesystem;
 
 
-std::string TestData::to_String() const
-{
-	return
-		"P-State initial:  " + utils::to_string( p_listState_initial ) + "\nP-State resulted: " + utils::to_string( p_listState_resulted ) +
-		"\nS-State initial:  " + utils::to_string( s_listState_initial ) + "\nS-State resulted: " + utils::to_string( s_listState_resulted ) +
-		"\nP-Content initial:  " + utils::to_string( p_listContent_initial ) + "\nP-Content resulted: " + utils::to_string( p_listContent_resulted ) +
-		"\nS-Content initial:  " + utils::to_string( s_listContent_initial ) + "\nS-Content resulted: " + utils::to_string( s_listContent_resulted ) +
-		"\nIntermediate RegionP: " + utils::to_string( intermediate_reg );
-}
-
-
-RegionsList_Tester::RegionsList_Tester()
-	: m_tested_regList(nullptr)
-	, m_ins_complex_testCasesCount(0)
-{}
-
-
 // Проверяет вставку уже существующего региона в RegionsList
 void RegionsList_Tester::Test_DoubleInserion()
 {
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Existing Region Insertions", 1 };
 
-	Error_BasePtr err = nullptr;
-	std::shared_ptr<Error_RegionsList> errRegs = nullptr;
-	uint32_t pitch_size = 4000;
-	CELL* memoryPitch = new CELL[pitch_size];
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	CELL* memoryPitch = new CELL[4000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
+
+	// Тестовые вставки
+	Region_P initial_region = { memoryPitch + 100, 100 };
+	Region_P second_region  = { memoryPitch + 300, 100 };
 
 	do {
 		// Делаем инициализирующую вставку
-		RegionP<CELL> initial_region{ memoryPitch + 100, 100 };
-		RegionP<CELL> second_region{ memoryPitch + 300, 100 };
-
-		err = m_tested_regList->ReleaseRegion( initial_region );			TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
+		Error_BasePtr err = regList->ReleaseRegion( initial_region );                                                                                                           TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
 
 		// Пытаемся заинсертить существующий регион, следим за ошибкой
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( initial_region ));
+		std::shared_ptr<Error_RegionsList> errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( initial_region ));
 
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_EXISTING_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (existing region insertion after initial insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (existing region insertion after initial insertion)", PLACE(), "Log.txt" );               TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Делаем вторую вставку
-		err = m_tested_regList->ReleaseRegion( second_region );				TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList second insertion" );
+		err = regList->ReleaseRegion( second_region );                                                                                                                          TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList second insertion" );
 
 		// Пытаемся заинсертить существующий регион, следим за ошибкой
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( second_region ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( second_region ));
 
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_EXISTING_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (existing region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (existing region insertion after second insertion)", PLACE(), "Log.txt" );                TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 
 		delete[] memoryPitch;
@@ -81,7 +63,7 @@ void RegionsList_Tester::Test_DoubleInserion()
 
 	delete[] memoryPitch;
 	Log::test( "Log.txt" ) << LogTest::Finished{ false };
-	return;
+	system( "Pause" );
 }
 
 
@@ -90,77 +72,74 @@ void RegionsList_Tester::Test_OverlappedInsertion()
 {
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Overlapping Region Insertions", 1 };
 
-	Error_BasePtr err = nullptr;
-	std::shared_ptr<Error_RegionsList> errRegs = nullptr;
-	uint32_t pitch_size = 4000;
-	CELL* memoryPitch = new CELL[pitch_size];
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	CELL* memoryPitch = new CELL[4000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
+
+	// Тестовые вставки
+	Region_P initial_region              = { memoryPitch + 100, 50 };
+	Region_P left_overlapped             = { memoryPitch + 50,  51 };
+	Region_P right_overlapped            = { memoryPitch + 149, 50 };
+	Region_P medium_left_overlapped      = { memoryPitch + 149, 50 };
+	Region_P medium_left_overlapped_adj  = { memoryPitch + 149, 51 };
+	Region_P medium_right_overlapped     = { memoryPitch + 151, 50 };
+	Region_P medium_right_overlapped_adj = { memoryPitch + 150, 51 };
+	Region_P medium_left_right           = { memoryPitch + 149, 52 };
 
 	do {
-		RegionP<CELL> initial_region{ memoryPitch + 100, 50 };
-		RegionP<CELL> left_overlapped{ memoryPitch + 50, 51 };
-		RegionP<CELL> right_overlapped{ memoryPitch + 149, 50 };
-
 		// Делаем инициализирующую вставку
-		err = m_tested_regList->ReleaseRegion( initial_region );			TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
+		Error_BasePtr err = regList->ReleaseRegion( initial_region );                                                                                                           TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
 
 		// Пытаемся заинсертить перекрывающийся слева регион, следим за ошибкой
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( left_overlapped ));
+		std::shared_ptr<Error_RegionsList> errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( left_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (left overlapped region insertion after initial insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (left overlapped region insertion after initial insertion)", PLACE(), "Log.txt" );        TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 
 		// Пытаемся заинсертить перекрывающийся справа регион, следим за ошибкой
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( right_overlapped ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( right_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (right overlapped region insertion after initial insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (right overlapped region insertion after initial insertion)", PLACE(), "Log.txt" );       TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 
 		// Делаем вторую вставку
-		RegionP<CELL> second_region{ memoryPitch + 200, 50 };
-		err = m_tested_regList->ReleaseRegion( second_region );			TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList second insertion" );
-
-		RegionP<CELL> medium_left_overlapped{ memoryPitch + 149, 50 };
-		RegionP<CELL> medium_left_overlapped_adj{ memoryPitch + 149, 51 };
-		RegionP<CELL> medium_right_overlapped{ memoryPitch + 151, 50 };
-		RegionP<CELL> medium_right_overlapped_adj{ memoryPitch + 150, 51 };
-		RegionP<CELL> medium_left_right{ memoryPitch + 149, 52 };
+		Region_P second_region = { memoryPitch + 200, 50 };
+		err = regList->ReleaseRegion( second_region );                                                                                                                          TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList second insertion" );
 		right_overlapped = { memoryPitch + 249, 50 };
 
 		// Пытаемся заинсертить посередине перекрывающийся слева регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( medium_left_overlapped ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( medium_left_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );  TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить посередине перекрывающийся слева и смежный справа регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( medium_left_overlapped_adj ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( medium_left_overlapped_adj ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium left overlapped right-adjacent region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium left overlapped right-adjacent region insertion after second insertion)", PLACE(), "Log.txt" );   TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить посередине перекрывающийся справа регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( medium_right_overlapped ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( medium_right_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right overlapped region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right overlapped region insertion after second insertion)", PLACE(), "Log.txt" ); TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить посередине перекрывающийся справа и смежный слева регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( medium_right_overlapped_adj ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( medium_right_overlapped_adj ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right overlapped left-adjacent region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right overlapped left-adjacent region insertion after second insertion)", PLACE(), "Log.txt" );   TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить посередине перекрывающийся слева и справа регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( medium_left_right ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( medium_left_right ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right and left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (medium right and left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );        TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить крайний левый перекрывающийся регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( left_overlapped ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( left_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (left overlapped region insertion after second insertion)", PLACE(), "Log.txt" );         TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		// Пытаемся заинсертить крайний правый перекрывающийся регион
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->ReleaseRegion( right_overlapped ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->ReleaseRegion( right_overlapped ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_OVERLAPPED_REG_INSERTION) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (right overlapped region insertion after second insertion)", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (right overlapped region insertion after second insertion)", PLACE(), "Log.txt" );        TRACE_PRINT_CONTINUE( err, "ReleaseRegion() Wrong behavior" );
 		}
 		delete[] memoryPitch;
 		Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -168,8 +147,8 @@ void RegionsList_Tester::Test_OverlappedInsertion()
 	} while (0);
 
 	delete[] memoryPitch;
-	Log::test( "Log.txt" ) << LogTest::Finished{ true };
-	return;
+	Log::test( "Log.txt" ) << LogTest::Finished{ false };
+	system( "Pause" );
 }
 
 
@@ -179,45 +158,42 @@ void RegionsList_Tester::Test_GrabbingFromEmptyList()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Grabbing From Empty List", 1 };
 
 	Error_BasePtr err = nullptr;
-	std::shared_ptr<Error_RegionsList> errRegs = nullptr;
 	CELL* marker = new CELL;
-
-	// Создаём RegionsList
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
 
 	do {
 		// Получаем состояния и футпринты списков ДО, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList creation" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList creation" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList creation" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList creation" );
 
 		// Пытаемся захватить регион из пустого списка, следим за ошибкой
 		CELL* grabbedReg = marker;
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->GrabRegion( 1, &grabbedReg ));
+		std::shared_ptr<Error_RegionsList> errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->GrabRegion( 1, &grabbedReg ));
 
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_GRAB_FROM_EMPTY_LIST) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region from the empty S-List)", PLACE(), "Log.txt" );			TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region from the empty S-List)", PLACE(), "Log.txt" );                 TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
 		}
 		if (grabbedReg != marker) {
-			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region from the empty S-List", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
+			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region from the empty S-List", PLACE(), "Log.txt" );           TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
 		}
 
 		// Получаем состояния и футпринты списков ПОСЛЕ, проверяем их корректность
-		PList_State_before = Validate_ListState( GetState<Region_P>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList grabbing" );
-		SList_State_before = Validate_ListState( GetState<Region_S>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList grabbing" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList grabbing" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList grabbing" );
+		PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList grabbing" );
+		SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList grabbing" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList grabbing" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList grabbing" );
 
-		PList_Footprints_before = GetFootprints<Region_P>();
-		SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList grabbing" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList grabbing" );
+		PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList grabbing" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList grabbing" );
 
 		delete marker;
 		Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -227,6 +203,7 @@ void RegionsList_Tester::Test_GrabbingFromEmptyList()
 
 	delete marker;
 	Log::test( "Log.txt" ) << LogTest::Finished{ false };
+	system( "Pause" );
 }
 
 
@@ -236,97 +213,98 @@ void RegionsList_Tester::Test_GrabbingTooBigRegion()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Grabbing Too Big Region", 1 };
 
 	Error_BasePtr err = nullptr;
-	std::shared_ptr<Error_RegionsList> errRegs = nullptr;
-	uint32_t pitch_size = 20000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[20000];
 	CELL* marker = new CELL;
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
 
-	// Создаём RegionsList
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	// Тестовые вставки
+	Region_P initial_insertion = { memoryPitch,      10 };
+	Region_P second_insertion  = { memoryPitch + 20, 11 };
 
 	do {
 		// Делаем инициализирующую вставку
-		m_tested_regList->ReleaseRegion( { memoryPitch, 10 } );
+		regList->ReleaseRegion( initial_insertion );
 
 		// Проверяем состояния, футпринты и контент после инициализирующей вставки
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
-		CheckState( { 3, 1, 1, 1, 1, 2 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( { 3, 1, 1, 1, 1, 2 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( { 3, 1, 1, 1, 1, 2 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( { 3, 1, 1, 1, 1, 2 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList initial insertion" );
 
-		std::vector<Region_P> PList_Content = GetContent<Region_P>( err );						TRACE_PRINT_CONTINUE( err, "Can't get P-List content after initial insertion" );
-		std::vector<Region_S> SList_Content = GetContent<Region_S>( err );						TRACE_PRINT_CONTINUE( err, "Can't get S-List content after initial insertion" );
-		CheckContent<Region_P>( { { memoryPitch, 10 } }, PList_Content, err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after initial insertion" );
-		CheckContent<Region_S>( { { memoryPitch, 10, 1 } }, SList_Content, err );				TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after initial insertion" );
+		std::vector<Region_P> PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                       TRACE_PRINT_CONTINUE( err, "Can't get P-List content after initial insertion" );
+		std::vector<Region_S> SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                       TRACE_PRINT_CONTINUE( err, "Can't get S-List content after initial insertion" );
+		rl_check::CheckContent<Region_P>( { { memoryPitch, 10 } }, PList_Content, err );                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after initial insertion" );
+		rl_check::CheckContent<Region_S>( { { memoryPitch, 10, 1 } }, SList_Content, err );                                         TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after initial insertion" );
 
 		// Пытаемся захватить слишком большой регион, следим за ошибкой
 		CELL* grabbedReg = marker;
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->GrabRegion( 11, &grabbedReg ));
+		std::shared_ptr<Error_RegionsList> errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->GrabRegion( 11, &grabbedReg ));
 
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_CONSISTENT_REG_NOTFOUND) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size is greater than the S-List has)", PLACE(), "Log.txt" );		TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after initial insertion" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size is greater than the S-List has)", PLACE(), "Log.txt" );      TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after initial insertion" );
 		}
 		if (grabbedReg != marker) {
-			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with too big size", PLACE(), "Log.txt" );						TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after initial insertion" );
+			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with too big size", PLACE(), "Log.txt" );                       TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after initial insertion" );
 		}
 		// Делаем вторую вставку
-		m_tested_regList->ReleaseRegion( { memoryPitch + 20, 11 } );
+		regList->ReleaseRegion( second_insertion );
 
 		// Проверяем состояния, футпринты и контент после второй вставки
-		PList_State_before = Validate_ListState( GetState<Region_P>(), err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
-		SList_State_before = Validate_ListState( GetState<Region_S>(), err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
-		CheckState( { 3, 2, 1, 0, 1, 3 }, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
-		CheckState( { 3, 2, 1, 0, 1, 3 }, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
+		PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
+		SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
+		rl_check::CheckState( { 3, 2, 1, 0, 1, 3 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
+		rl_check::CheckState( { 3, 2, 1, 0, 1, 3 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
 
-		PList_Footprints_before = GetFootprints<Region_P>();
-		SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList second insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList second insertion" );
+		PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList second insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList second insertion" );
 
-		PList_Content = GetContent<Region_P>( err );													TRACE_PRINT_CONTINUE( err, "Can't get P-List content after second insertion" );
-		SList_Content = GetContent<Region_S>( err );													TRACE_PRINT_CONTINUE( err, "Can't get S-List content after second insertion" );
-		CheckContent<Region_P>( { {memoryPitch, 10}, {memoryPitch + 20, 11} }, PList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after second insertion" );
-		CheckContent<Region_S>( { {memoryPitch, 10, 1}, {memoryPitch + 20, 11, 1} }, SList_Content, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after second insertion" );
+		PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get P-List content after second insertion" );
+		SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get S-List content after second insertion" );
+		rl_check::CheckContent<Region_P>( { {memoryPitch, 10}, {memoryPitch + 20, 11} }, PList_Content, err );                      TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after second insertion" );
+		rl_check::CheckContent<Region_S>( { {memoryPitch, 10, 1}, {memoryPitch + 20, 11, 1} }, SList_Content, err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after second insertion" );
 
 		// Пытаемся захватить слишком большой регион, следим за ошибкой
-		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(m_tested_regList->GrabRegion( 12, &grabbedReg ));
+		errRegs = std::dynamic_pointer_cast<Error_RegionsList, Error_Base>(regList->GrabRegion( 12, &grabbedReg ));
 		if (!errRegs || errRegs->Type() != RegList_ErrType::ERR_CONSISTENT_REG_NOTFOUND) {
-			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size is greater than the S-List has)", PLACE(), "Log.txt" );		TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after second insertion" );
+			err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size is greater than the S-List has)", PLACE(), "Log.txt" );      TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after second insertion" );
 		}
 		if (grabbedReg != marker) {
-			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with too big size", PLACE(), "Log.txt" );						TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after second insertion" );
+			err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with too big size", PLACE(), "Log.txt" );                       TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after second insertion" );
 		}
 		// Проверяем состояния, футпринты и контент после попытки захвата
-		PList_State_before = Validate_ListState( GetState<Region_P>(), err );								TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
-		SList_State_before = Validate_ListState( GetState<Region_S>(), err );								TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
-		CheckState( { 3, 2, 1, 0, 1, 3 }, PList_State_before, err );										TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
-		CheckState( { 3, 2, 1, 0, 1, 3 }, SList_State_before, err );										TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
+		PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
+		SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
+		rl_check::CheckState( { 3, 2, 1, 0, 1, 3 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList second insertion" );
+		rl_check::CheckState( { 3, 2, 1, 0, 1, 3 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList second insertion" );
 
-		PList_Footprints_before = GetFootprints<Region_P>();
-		SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );				TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList second insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );				TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList second insertion" );
+		PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList second insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList second insertion" );
 
-		PList_Content = GetContent<Region_P>( err );														TRACE_PRINT_CONTINUE( err, "Can't get P-List content after second insertion" );
-		SList_Content = GetContent<Region_S>( err );														TRACE_PRINT_CONTINUE( err, "Can't get S-List content after second insertion" );
-		CheckContent<Region_P>( { {memoryPitch, 10}, {memoryPitch + 20, 11} }, PList_Content, err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after second insertion" );
-		CheckContent<Region_S>( { {memoryPitch, 10, 1}, {memoryPitch + 20, 11, 1} }, SList_Content, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after second insertion" );
+		PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get P-List content after second insertion" );
+		SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get S-List content after second insertion" );
+		rl_check::CheckContent<Region_P>( { {memoryPitch, 10}, {memoryPitch + 20, 11} }, PList_Content, err );                      TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after second insertion" );
+		rl_check::CheckContent<Region_S>( { {memoryPitch, 10, 1}, {memoryPitch + 20, 11, 1} }, SList_Content, err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after second insertion" );
 
 		delete marker;
-		delete memoryPitch;
+		delete[] memoryPitch;
 		Log::test( "Log.txt" ) << LogTest::Finished{ true };
 		return;
 
 	} while (0);
 
 	delete marker;
-	delete memoryPitch;
+	delete[] memoryPitch;
 	Log::test( "Log.txt" ) << LogTest::Finished{ false };
+	system( "Pause" );
 }
 
 
@@ -336,84 +314,79 @@ void RegionsList_Tester::Test_ListsExpanding()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Lists Expanding", 1 };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 4000;
-	CELL* memoryPitch = new CELL[pitch_size];
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	CELL* memoryPitch = new CELL[4000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
 
 	do {
 		// Получаем состояния и футпринты списков в начальном состоянии (до каких-либо вставок), проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
 		ListState expected_PState = { 3, 0, 1, 2, 1, 1 };
 		ListState expected_SState = { 3, 0, 1, 2, 1, 1 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList creation" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList creation" );
-
-		for (size_t i = 0; i < pitch_size; ++i) {
-			//memoryPitch[i] = { i, i };
-		}
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList creation" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList creation" );
 
 		// Формируем набор вставок
-		std::vector<RegionP<CELL>> regs( 200 );
+		std::vector<Region_P> regs( 200 );
 		for (size_t i = 0; i < 200; ++i) {
-			regs[i] = RegionP<CELL>{ memoryPitch + i * 10, 9 };
+			regs[i] = Region_P{ memoryPitch + i * 10, 9 };
 		}
 
 		// Производим вставки с целью расширения P- и S-списков
 		std::string errMess = "ReleaseRegion() error gained after RegionsList expanding";
-		err = m_tested_regList->ReleaseRegion( regs[100] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [#B#] [-E-]
-		err = m_tested_regList->ReleaseRegion( regs[101] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [#B#] [###] E
-		err = m_tested_regList->ReleaseRegion( regs[102] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [#B#] [###] [###] [-E-]
-		err = m_tested_regList->ReleaseRegion( regs[103] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [#B#] [###] [###] [###] E
-		err = m_tested_regList->ReleaseRegion( regs[104] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [---] [---] [-E-]
+		err = regList->ReleaseRegion( regs[100] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [#B#] [-E-]
+		err = regList->ReleaseRegion( regs[101] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [#B#] [###] E
+		err = regList->ReleaseRegion( regs[102] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [#B#] [###] [###] [-E-]
+		err = regList->ReleaseRegion( regs[103] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [#B#] [###] [###] [###] E
+		err = regList->ReleaseRegion( regs[104] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [---] [---] [-E-]
 
 		for (uint8_t i = 105; i < 108; ++i) {
-			err = m_tested_regList->ReleaseRegion( regs[i] );	TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] E
+			err = regList->ReleaseRegion( regs[i] );    TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] E
 		}
-		err = m_tested_regList->ReleaseRegion( regs[108] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [#№#] [-E-] [---] [---] [---] [---] [---] [---]
+		err = regList->ReleaseRegion( regs[108] );      TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [#№#] [-E-] [---] [---] [---] [---] [---] [---]
 
 		for (uint8_t i = 109; i < 116; ++i) {
-			err = m_tested_regList->ReleaseRegion( regs[i] );	TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [#№#] [###] [###] [###] [###] [###] [###] [###] E
+			err = regList->ReleaseRegion( regs[i] );    TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [#№#] [###] [###] [###] [###] [###] [###] [###] E
 		}
 		for (uint8_t i = 92; i < 100; ++i) {
-			err = m_tested_regList->ReleaseRegion( regs[i] );	TRACE_PRINT_CONTINUE( err, errMess );	// [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [#№#] [###] [###] [###] [###] [###] [###] [###] E
+			err = regList->ReleaseRegion( regs[i] );    TRACE_PRINT_CONTINUE( err, errMess );	// [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [#№#] [###] [###] [###] [###] [###] [###] [###] E
 		}
-		err = m_tested_regList->ReleaseRegion( regs[91] );		TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [-E-] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---]
+		err = regList->ReleaseRegion( regs[91] );       TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [-E-] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---]
 
 		for (uint8_t i = 116; i < 128; ++i) {
-			err = m_tested_regList->ReleaseRegion( regs[i] );	TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] E
+			err = regList->ReleaseRegion( regs[i] );    TRACE_PRINT_CONTINUE( err, errMess );	// [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [---] [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] E
 		}
 		for (uint8_t i = 80; i < 91; ++i) {
-			err = m_tested_regList->ReleaseRegion( regs[i] );	TRACE_PRINT_CONTINUE( err, errMess );	// [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] E
+			err = regList->ReleaseRegion( regs[i] );    TRACE_PRINT_CONTINUE( err, errMess );	// [#B#] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] [###] E
 		}
 
 		// Получаем состояния и футпринты списков после расширения, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList expanding" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList expanding" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList expanding" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList expanding" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList expanding" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList expanding" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList expanding" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList expanding" );
 		expected_PState = { 48, 48, 0, 0, 0, 48 };
 		expected_SState = { 48, 48, 0, 0, 0, 48 };
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList expanding" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList expanding" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList expanding" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList expanding" );
 
 		// Получаем контент списков, проверяем
-		std::vector<Region_P> p_content = GetContent<Region_P>( err );							TRACE_PRINT_CONTINUE( err, "Can't get P-List content after RegionsList expanding" );
-		std::vector<Region_S> s_content = GetContent<Region_S>( err );							TRACE_PRINT_CONTINUE( err, "Can't get S-List content after RegionsList expanding" );
+		std::vector<Region_P> p_content = rl_manip::GetContent<Region_P>( regList, err );                                           TRACE_PRINT_CONTINUE( err, "Can't get P-List content after RegionsList expanding" );
+		std::vector<Region_S> s_content = rl_manip::GetContent<Region_S>( regList, err );                                           TRACE_PRINT_CONTINUE( err, "Can't get S-List content after RegionsList expanding" );
 
 		std::vector<Region_P> p_content_expected = std::vector<Region_P>( regs.begin() + 80, regs.begin() + 128 );
 		std::vector<Region_S> s_content_expected;
 		utils::SListFromPList<CELL>( p_content_expected, s_content_expected );
 
-		CheckContent<Region_P>( p_content_expected, p_content, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after RegionsList expanding " );
-		CheckContent<Region_S>( s_content_expected, s_content, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after RegionsList expanding " );
+		rl_check::CheckContent<Region_P>( p_content_expected, p_content, err );                                                     TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after RegionsList expanding " );
+		rl_check::CheckContent<Region_S>( s_content_expected, s_content, err );                                                     TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after RegionsList expanding " );
 
 	} while (0);
 
@@ -421,6 +394,7 @@ void RegionsList_Tester::Test_ListsExpanding()
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -433,36 +407,36 @@ void RegionsList_Tester::Test_InitialReleaseRegion()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Insertions Initial" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 20000;
+	size_t pitch_size = 20000;
 	CELL* memoryPitch = new CELL[pitch_size];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
-	// Создаём RegionsList
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
+	// Тестовые вставки
+	Region_P initial_insertion = { memoryPitch, pitch_size };
 
 	do {
 		// Получаем состояния и футпринты списков ДО, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
-		CheckState( { 5, 0, 2, 3, 2, 2 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
-		CheckState( { 5, 0, 2, 3, 2, 2 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
+		rl_check::CheckState( { 5, 0, 2, 3, 2, 2 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList creation" );
+		rl_check::CheckState( { 5, 0, 2, 3, 2, 2 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList creation" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList creation" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList creation" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after RegionsList creation" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after RegionsList creation" );
 
 		// Делаем инициализирующую вставку
-		RegionP<CELL> initial_region{ memoryPitch, pitch_size };
-		err = m_tested_regList->ReleaseRegion( initial_region );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		err = regList->ReleaseRegion( initial_insertion );                                                                          TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Сравниваем только состояния ДО и ПОСЛЕ (проверка футпринтов - избыточна)
 		PList_State_before.end_pos += 1;
@@ -473,8 +447,8 @@ void RegionsList_Tester::Test_InitialReleaseRegion()
 		SList_State_before.size += 1;
 		SList_State_before.spaceRight -= 1;
 
-		CheckState( PList_State_before, PList_State_after, err );								TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( SList_State_before, SList_State_after, err );								TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( PList_State_before, PList_State_after, err );                                                         TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( SList_State_before, SList_State_after, err );                                                         TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
 	} while (0);
 
@@ -482,6 +456,7 @@ void RegionsList_Tester::Test_InitialReleaseRegion()
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -494,68 +469,67 @@ void RegionsList_Tester::Test_SecondRelease_LeftRightAdj()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Left/Right Adjacent Insertions" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> left_insertion_adj = { memoryPitch + 450, 50 };
-	RegionP<CELL> right_insertion_adj = { memoryPitch + 550, 50 };
+	Region_P first_insertion     = { memoryPitch + 500, 50 };
+	Region_P left_insertion_adj  = { memoryPitch + 450, 50 };
+	Region_P right_insertion_adj = { memoryPitch + 550, 50 };
 
 	do {
-		/*----------------------------------------------------- Тест смежных вставок справа и слева после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		Error_BasePtr err = regList->ReleaseRegion( first_insertion );                                                              TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем смежную вставку слева
-		err = m_tested_regList->ReleaseRegion( left_insertion_adj );							TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_adj insertion" );
+		err = regList->ReleaseRegion( left_insertion_adj );                                                                         TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_adj insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_adj insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_adj insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_adj insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_adj insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_adj insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_adj insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_adj insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_adj insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ (при смежной вставке изменений быть не должно)
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_adj insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_adj insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_adj insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_adj insertion" );
 
 		// Делаем смежную вставку справа
-		err = m_tested_regList->ReleaseRegion( right_insertion_adj );									TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_adj insertion" );
+		err = regList->ReleaseRegion( right_insertion_adj );                                                                        TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_adj insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		PList_State_after = Validate_ListState( GetState<Region_P>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_adj insertion" );
-		SList_State_after = Validate_ListState( GetState<Region_S>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_adj insertion" );
-		PList_Footprints_after = GetFootprints<Region_P>();
-		SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_adj insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_adj insertion" );
+		PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_adj insertion" );
+		SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_adj insertion" );
+		PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_adj insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_adj insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ (при смежной вставке изменений быть не должно)
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_adj insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_adj insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_adj insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_adj insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -568,42 +542,40 @@ void RegionsList_Tester::Test_SecondRelease_Left_Less_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Left Insertion With Less Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> left_insertion_size_less = { memoryPitch + 450, 49 };
+	Region_P first_insertion          = { memoryPitch + 500, 50 };
+	Region_P left_insertion_size_less = { memoryPitch + 450, 49 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки меньшей ширины слева после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку слева меньшей ширины
-		err = m_tested_regList->ReleaseRegion( left_insertion_size_less );						TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_less insertion" );
+		err = regList->ReleaseRegion( left_insertion_size_less );                                                                   TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_less insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_less insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_less insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_less insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_less insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_less insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_less insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_less insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_less insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.begin_pos -= 1;
@@ -613,14 +585,15 @@ void RegionsList_Tester::Test_SecondRelease_Left_Less_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceLeft -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_less insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_less insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_less insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_less insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -633,42 +606,40 @@ void RegionsList_Tester::Test_SecondRelease_Left_Great_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Left Insertion With Great Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> left_insertion_size_great = { memoryPitch + 448, 51 };
+	Region_P first_insertion           = { memoryPitch + 500, 50 };
+	Region_P left_insertion_size_great = { memoryPitch + 448, 51 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки большей ширины слева после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку слева большей ширины
-		err = m_tested_regList->ReleaseRegion( left_insertion_size_great );						TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_great insertion" );
+		err = regList->ReleaseRegion( left_insertion_size_great );                                                                  TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_great insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_great insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_great insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_great insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_great insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_great insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_great insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_great insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_great insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.begin_pos -= 1;
@@ -678,14 +649,15 @@ void RegionsList_Tester::Test_SecondRelease_Left_Great_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceRight -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_great insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_great insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_great insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_great insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -698,42 +670,40 @@ void RegionsList_Tester::Test_SecondRelease_Left_Equal_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Left Insertion With Equal Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> left_insertion_size_equal = { memoryPitch + 449, 50 };
+	Region_P first_insertion =           { memoryPitch + 500, 50 };
+	Region_P left_insertion_size_equal = { memoryPitch + 449, 50 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки равной ширины слева после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку	
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку слева равной ширины
-		err = m_tested_regList->ReleaseRegion( left_insertion_size_equal );						TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_equal insertion" );
+		err = regList->ReleaseRegion( left_insertion_size_equal );                                                                  TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList left_size_equal insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_equal insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_equal insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_equal insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_equal insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_equal insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_equal insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList left_size_equal insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList left_size_equal insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.begin_pos -= 1;
@@ -743,14 +713,15 @@ void RegionsList_Tester::Test_SecondRelease_Left_Equal_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceLeft -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_equal insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_equal insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList left_size_equal insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList left_size_equal insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -763,42 +734,40 @@ void RegionsList_Tester::Test_SecondRelease_Right_Less_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Right Insertion With Less Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> right_insertion_size_less = { memoryPitch + 551, 49 };
+	Region_P first_insertion =           { memoryPitch + 500, 50 };
+	Region_P right_insertion_size_less = { memoryPitch + 551, 49 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки меньшей ширины справа после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку справа меньшей ширины
-		err = m_tested_regList->ReleaseRegion( right_insertion_size_less );						TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_less insertion" );
+		err = regList->ReleaseRegion( right_insertion_size_less );                                                                  TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_less insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_less insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_less insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_less insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_less insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_less insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_less insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_less insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_less insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.end_pos += 1;
@@ -808,14 +777,15 @@ void RegionsList_Tester::Test_SecondRelease_Right_Less_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceLeft -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_less insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_less insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_less insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_less insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -828,42 +798,40 @@ void RegionsList_Tester::Test_SecondRelease_Right_Great_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Right Insertion With Great Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> right_insertion_size_great = { memoryPitch + 551, 51 };
+	Region_P first_insertion =            { memoryPitch + 500, 50 };
+	Region_P right_insertion_size_great = { memoryPitch + 551, 51 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки большей ширины справа после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку справа меньшей ширины
-		err = m_tested_regList->ReleaseRegion( right_insertion_size_great );					TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_great insertion" );
+		err = regList->ReleaseRegion( right_insertion_size_great );                                                                 TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_great insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_great insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_great insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_great insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_great insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_great insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_great insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_great insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_great insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.end_pos += 1;
@@ -873,14 +841,15 @@ void RegionsList_Tester::Test_SecondRelease_Right_Great_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceRight -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_great insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_great insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_great insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_great insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -893,42 +862,40 @@ void RegionsList_Tester::Test_SecondRelease_Right_Equal_Size()
 	Log::test( "Log.txt" ) << LogTest::Start{ "Test Second Right Insertion With Equal Size" };
 
 	Error_BasePtr err = nullptr;
-	uint32_t pitch_size = 1000;
-	CELL* memoryPitch = new CELL[pitch_size];
+	CELL* memoryPitch = new CELL[1000];
+	auto regList = std::make_shared<RegionsList<CELL>>( 5 );
 
 	// Тестовые вставки
-	RegionP<CELL> first_insertion = { memoryPitch + 500, 50 };
-	RegionP<CELL> right_insertion_size_equal = { memoryPitch + 551, 50 };
+	Region_P first_insertion =            { memoryPitch + 500, 50 };
+	Region_P right_insertion_size_equal = { memoryPitch + 551, 50 };
 
 	do {
-		/*----------------------------------------------------- Тест вставки равной ширины справа после инициализирующей вставки -----------------------------------------------------*/
-		// Создаём RegionsList, делаем инициализирующую вставку
-		m_tested_regList = std::make_unique<RegionsList<CELL>>( 5 );
-		err = m_tested_regList->ReleaseRegion( first_insertion );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
+		// Делаем инициализирующую вставку
+		err = regList->ReleaseRegion( first_insertion );                                                                            TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList initial insertion" );
 
 		// Получаем состояния и футпринты списков ДО вставки, проверяем их корректность
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 		ListState expected_PState = { 5, 1, 2, 2, 2, 3 };
 		ListState expected_SState = { 5, 1, 2, 2, 2, 3 };
-		CheckState( expected_PState, PList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
-		CheckState( expected_SState, SList_State_before, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_PState, PList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList initial insertion" );
+		rl_check::CheckState( expected_SState, SList_State_before, err );                                                           TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList initial insertion" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList initial insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList initial insertion" );
 
 		// Делаем вставку справа меньшей ширины
-		err = m_tested_regList->ReleaseRegion( right_insertion_size_equal );					TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_equal insertion" );
+		err = regList->ReleaseRegion( right_insertion_size_equal );                                                                 TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after RegionsList right_size_equal insertion" );
 
 		// Получаем состояния и футпринты списков ПОСЛЕ вставки, проверяем их корректность
-		ListState PList_State_after = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_equal insertion" );
-		ListState SList_State_after = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_equal insertion" );
-		ListFootprints PList_Footprints_after = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_after = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_equal insertion" );
-		CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_equal insertion" );
+		ListState PList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_equal insertion" );
+		ListState SList_State_after = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                 TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_equal insertion" );
+		ListFootprints PList_Footprints_after = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_after = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_after, PList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after RegionsList right_size_equal insertion" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_after, SList_Footprints_after, err );                               TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after RegionsList right_size_equal insertion" );
 
 		// Сравниваем состояния ДО и ПОСЛЕ
 		expected_PState.end_pos += 1;
@@ -938,14 +905,15 @@ void RegionsList_Tester::Test_SecondRelease_Right_Equal_Size()
 		expected_SState.size += 1;
 		expected_SState.spaceRight -= 1;
 
-		CheckState( expected_PState, PList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_equal insertion" );
-		CheckState( expected_SState, SList_State_after, err );									TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_equal insertion" );
+		rl_check::CheckState( expected_PState, PList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after RegionsList right_size_equal insertion" );
+		rl_check::CheckState( expected_SState, SList_State_after, err );                                                            TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after RegionsList right_size_equal insertion" );
 	} while (0);
 
 	delete[] memoryPitch;
 
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -961,72 +929,73 @@ void RegionsList_Tester::Test_GrabbingFromSingleSizedList()
 	uint32_t pitch_size = 100;
 	CELL *memoryPitch = new CELL[pitch_size];
 	CELL *grabbedReg = nullptr;
+	auto regList = std::make_shared<RegionsList<CELL>>( 0 );
 
-	// Создаём RegionsList
-	m_tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+	// Тестовые вставки
+	Region_P initial_region{ memoryPitch, pitch_size };
 
 	do {
 		// Делаем инициализирующую вставку
-		RegionP<CELL> initial_region{ memoryPitch, pitch_size };
-		err = m_tested_regList->ReleaseRegion( initial_region );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
+		err = regList->ReleaseRegion( initial_region );                                                                             TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
 
 		// Делаем захват региона максимальной ширины, возвращая RegionsList в начальное состояние
-		err = m_tested_regList->GrabRegion( 100, &grabbedReg );									TRACE_PRINT_CONTINUE( err, "Error gained during grabbing the region with max size" );
+		err = regList->GrabRegion( 100, &grabbedReg );                                                                              TRACE_PRINT_CONTINUE( err, "Error gained during grabbing the region with max size" );
 
 		// Проверяем состояния, футпринты и контент
-		ListState PList_State_before = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with max size" );
-		ListState SList_State_before = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with max size" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with max size" );
-		CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with max size" );
+		ListState PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with max size" );
+		ListState SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with max size" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with max size" );
+		rl_check::CheckState( { 3, 0, 1, 2, 1, 1 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with max size" );
 
-		ListFootprints PList_Footprints_before = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after grabbing the region with max size" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after grabbing the region with max size" );
+		ListFootprints PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		ListFootprints SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	                            TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after grabbing the region with max size" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	                            TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after grabbing the region with max size" );
 
-		std::vector<Region_P> PList_Content = GetContent<Region_P>( err );						TRACE_PRINT_CONTINUE( err, "Can't get P-List content after grabbing the region with max size" );
-		std::vector<Region_S> SList_Content = GetContent<Region_S>( err );						TRACE_PRINT_CONTINUE( err, "Can't get S-List content after grabbing the region with max size" );
-		CheckContent<Region_P>({}, PList_Content, err );										TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after grabbing the region with max size" );
-		CheckContent<Region_S>({}, SList_Content, err );										TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after grabbing the region with max size" );
+		std::vector<Region_P> PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                       TRACE_PRINT_CONTINUE( err, "Can't get P-List content after grabbing the region with max size" );
+		std::vector<Region_S> SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                       TRACE_PRINT_CONTINUE( err, "Can't get S-List content after grabbing the region with max size" );
+		rl_check::CheckContent<Region_P>({}, PList_Content, err );                                                                  TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after grabbing the region with max size" );
+		rl_check::CheckContent<Region_S>({}, SList_Content, err );                                                                  TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after grabbing the region with max size" );
 
 		// Проверяем указатель на захваченный регион
 		if (grabbedReg != memoryPitch) {
-			err = std::make_shared<Error_Custom>( "Output pointer is incorrect", PLACE(), "Log.txt" );			TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after grabbing the region with max size" );
+			err = std::make_shared<Error_Custom>( "Output pointer is incorrect", PLACE(), "Log.txt" );                              TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after grabbing the region with max size" );
 		}
 		grabbedReg = nullptr;
 
 		// Делаем инициализирующую вставку
-		err = m_tested_regList->ReleaseRegion( initial_region );								TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
+		err = regList->ReleaseRegion( initial_region );                                                                             TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained during RegionsList initial insertion" );
 
 		// Делаем захват региона НЕмаксимальной ширины
-		err = m_tested_regList->GrabRegion( 99, &grabbedReg );									TRACE_PRINT_CONTINUE( err, "Error gained during grabbing the region with non-max size" );
+		err = regList->GrabRegion( 99, &grabbedReg );                                                                               TRACE_PRINT_CONTINUE( err, "Error gained during grabbing the region with non-max size" );
 
 		// Проверяем состояния, футпринты и контент
-		PList_State_before = Validate_ListState( GetState<Region_P>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with non-max size" );
-		SList_State_before = Validate_ListState( GetState<Region_S>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with non-max size" );
-		CheckState( { 3, 1, 1, 1, 1, 2 }, PList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with non-max size" );
-		CheckState( { 3, 1, 1, 1, 1, 2 }, SList_State_before, err );							TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with non-max size" );
+		PList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with non-max size" );
+		SList_State_before = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                          TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with non-max size" );
+		rl_check::CheckState( { 3, 1, 1, 1, 1, 2 }, PList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing the region with non-max size" );
+		rl_check::CheckState( { 3, 1, 1, 1, 1, 2 }, SList_State_before, err );                                                      TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing the region with non-max size" );
 
-		PList_Footprints_before = GetFootprints<Region_P>();
-		SList_Footprints_before = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after grabbing the region with non-max size" );
-		CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after grabbing the region with non-max size" );
+		PList_Footprints_before = rl_manip::GetFootprints<Region_P>( regList );
+		SList_Footprints_before = rl_manip::GetFootprints<Region_S>( regList );
+		rl_check::CheckFootprintsVsState<Region_P>( PList_State_before, PList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect P-List state/footprints combo after grabbing the region with non-max size" );
+		rl_check::CheckFootprintsVsState<Region_S>( SList_State_before, SList_Footprints_before, err );                             TRACE_PRINT_CONTINUE( err, "Incorrect S-List state/footprints combo after grabbing the region with non-max size" );
 
-		PList_Content = GetContent<Region_P>( err );											TRACE_PRINT_CONTINUE( err, "Can't get P-List content after grabbing the region with non-max size" );
-		SList_Content = GetContent<Region_S>( err );											TRACE_PRINT_CONTINUE( err, "Can't get S-List content after grabbing the region with non-max size" );
-		CheckContent<Region_P>( { {grabbedReg + 99, 1} }, PList_Content, err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after grabbing the region with non-max size" );
-		CheckContent<Region_S>( { {grabbedReg + 99, 1, 1} }, SList_Content, err );				TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after grabbing the region with non-max size" );
+		PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get P-List content after grabbing the region with non-max size" );
+		SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                                             TRACE_PRINT_CONTINUE( err, "Can't get S-List content after grabbing the region with non-max size" );
+		rl_check::CheckContent<Region_P>( { {grabbedReg + 99, 1} }, PList_Content, err );                                           TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after grabbing the region with non-max size" );
+		rl_check::CheckContent<Region_S>( { {grabbedReg + 99, 1, 1} }, SList_Content, err );                                        TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after grabbing the region with non-max size" );
 
 		// Проверяем указатель на захваченный регион
 		if (grabbedReg != memoryPitch) {
-			err = std::make_shared<Error_Custom>( "Output pointer is incorrect", PLACE(), "Log.txt" );			TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after grabbing the region with non-max size" );
+			err = std::make_shared<Error_Custom>( "Output pointer is incorrect", PLACE(), "Log.txt" );                              TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior after grabbing the region with non-max size" );
 		}
 
 	} while (0);
 
-	delete memoryPitch;
+	delete[] memoryPitch;
 	if (err) {
 		Log::test( "Log.txt" ) << LogTest::Finished{ false };
+		system( "Pause" );
 		return;
 	}
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
@@ -1036,89 +1005,105 @@ void RegionsList_Tester::Test_GrabbingFromSingleSizedList()
 // Проверяет захват из RegionsList регионов различной ширины при различных исходных состояниях RegionsList
 void RegionsList_Tester::Test_GrabbingsComplex()
 {
-	clock_t start, end;
-	size_t step_num = 1;
-	std::string step_num_str;
-	std::string err_message;
-	Error_BasePtr err = nullptr;
+	std::vector<TestData> grabbs_complex;
+	GenerateGrabsComplex( grabbs_complex );
+
+	Log::test( "Log.txt" ) << LogTest::Start{ "Test Grabbings Complex", grabbs_complex.size() };
+
 	double sec_grab = 0.0;
-	CELL *marker = new CELL;
+	std::list<Error_BasePtr> errors;
+	std::mutex mutex_error, mutex_timing;
 
-	GenerateGrabsComplex();
-
-	Log::test( "Log.txt" ) << LogTest::Start{ "Test Grabbings Complex", m_grabbs_complex.size() };
-
-	// Выполняем тест-кейсы по порядку
-	for (const auto& test_step : m_grabbs_complex)
-	{
-		Log::test() << LogTest::Progress{};
-		step_num_str = std::to_string( step_num );
-		if (err) {
-			Log::test( "Log.txt" ) << LogTest::Finished{ false };
-			delete marker;
-			system( "Pause" );
-			return;
-		}
-		// Устанавливаем P- и S-списки в исходные состояния. Пишем в них исходный набор элементов.
-		SetState<Region_P>( test_step.p_listState_initial, err );							TRACE_PRINT_CONTINUE( err, "Can't set P-List initial state in step " + step_num_str + ":\n" + test_step.to_String() );
-		SetState<Region_S>( test_step.s_listState_initial, err );							TRACE_PRINT_CONTINUE( err, "Can't set S-List initial state in step " + step_num_str + ":\n" + test_step.to_String() );
-		SetContent<Region_P>( test_step.p_listContent_initial, err );						TRACE_PRINT_CONTINUE( err, "Can't set P-List initial content in step " + step_num_str + ":\n" + test_step.to_String() );
-		SetContent<Region_S>( test_step.s_listContent_initial, err );						TRACE_PRINT_CONTINUE( err, "Can't set S-List initial content in step " + step_num_str + ":\n" + test_step.to_String() );
-
-		// Проверяем установленное состояние и контент P- и S-списков
-		ListState PList_State = Validate_ListState( GetState<Region_P>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		ListState SList_State = Validate_ListState( GetState<Region_S>(), err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckState( test_step.p_listState_initial, PList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckState( test_step.s_listState_initial, SList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-
-		ListFootprints PList_Footprints = GetFootprints<Region_P>();
-		ListFootprints SList_Footprints = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );				TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );				TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-
-		std::vector<Region_P> PList_Content = GetContent<Region_P>( err );					TRACE_PRINT_CONTINUE( err, "Can't get P-List content after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		std::vector<Region_S> SList_Content = GetContent<Region_S>( err );					TRACE_PRINT_CONTINUE( err, "Can't get S-List content after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckContent<Region_P>( test_step.p_listContent_initial, PList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckContent<Region_S>( test_step.s_listContent_initial, SList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after initialisation in step " + step_num_str + ":\n" + test_step.to_String() );
-
-		// Производим захват
-		CELL* grabbedReg = marker;
-		start = clock();
-		err = m_tested_regList->GrabRegion( test_step.intermediate_reg.size, &grabbedReg );
-		end = clock();
-		sec_grab += (double)(end - start) / CLOCKS_PER_SEC;
-
-		// Если ожидаемый адрес захваченного региона - null, значит запрашиваемый регион слишком велик. GrabRegion() должна вернуть ошибку, а выходной указатель - остаться неизменённым
-		if (test_step.intermediate_reg.start == nullptr)
+	concurrency::cancellation_token_source cts;
+	concurrency::run_with_cancellation_token(
+		[&cts, &grabbs_complex, &errors, &sec_grab, &mutex_timing, &mutex_error, this]()
 		{
-			if (!err) {
-				err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size greater than S-List has)", PLACE(), "Log.txt" );			TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
-			}
-			if (grabbedReg != marker) {
-				err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with size greater than S-List has", PLACE(), "Log.txt" );	TRACE_PRINT_CONTINUE( err, "GrabRegion() Wrong behavior" );
-			}
-			err.reset();
-		}
-		// Проверяем состояние и контент P- и S-списков теперь
-		PList_State = Validate_ListState( GetState<Region_P>(), err );						TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		SList_State = Validate_ListState( GetState<Region_S>(), err );						TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckState( test_step.p_listState_resulted, PList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckState( test_step.s_listState_resulted, SList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
+			concurrency::parallel_for_each( grabbs_complex.begin(), grabbs_complex.end(),
+				[&cts, &errors, &sec_grab, &mutex_timing, &mutex_error, this]( TestData test_step )
+				{
+					Log::test() << LogTest::Progress{};
+					Error_BasePtr err = nullptr;
+					CELL* marker = new CELL;
+					std::shared_ptr<RegionsList<CELL>> tested_regList = std::make_unique<RegionsList<CELL>>( 0 );
+					
+					do {
+						rl_manip::SetState<Region_P>( test_step.p_listState_initial, tested_regList, err );                             TRACE_CONTINUE( err, "Can't set P-List initial state in step:\n" + test_step.to_String() );
+						rl_manip::SetState<Region_S>( test_step.s_listState_initial, tested_regList, err );                             TRACE_CONTINUE( err, "Can't set S-List initial state in step:\n" + test_step.to_String() );
+						rl_manip::SetContent<Region_P>( test_step.p_listContent_initial, tested_regList, err );                         TRACE_CONTINUE( err, "Can't set P-List initial content in step:\n" + test_step.to_String() );
+						rl_manip::SetContent<Region_S>( test_step.s_listContent_initial, tested_regList, err );                         TRACE_CONTINUE( err, "Can't set S-List initial content in step:\n" + test_step.to_String() );
 
-		PList_Footprints = GetFootprints<Region_P>();
-		SList_Footprints = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );				TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );				TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
+						ListState PList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( tested_regList ), err );    TRACE_CONTINUE( err, "Incorrect P-State gained after initialisation in step:\n" + test_step.to_String() );
+						ListState SList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( tested_regList ), err );    TRACE_CONTINUE( err, "Incorrect S-State gained after initialisation in step:\n" + test_step.to_String() );
+						rl_check::CheckState( test_step.p_listState_initial, PList_State, err );                                        TRACE_CONTINUE( err, "Incorrect P-State gained after initialisation in step:\n" + test_step.to_String() );
+						rl_check::CheckState( test_step.s_listState_initial, SList_State, err );                                        TRACE_CONTINUE( err, "Incorrect S-State gained after initialisation in step:\n" + test_step.to_String() );
+						
+						ListFootprints PList_Footprints = rl_manip::GetFootprints<Region_P>( tested_regList );
+						ListFootprints SList_Footprints = rl_manip::GetFootprints<Region_S>( tested_regList );
+						rl_check::CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );                               TRACE_CONTINUE( err, "Incorrect P-State/Footprints combo after initialisation in step:\n" + test_step.to_String() );
+						rl_check::CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );                               TRACE_CONTINUE( err, "Incorrect S-State/Footprints combo after initialisation in step:\n" + test_step.to_String() );
 
-		PList_Content = GetContent<Region_P>( err );										TRACE_PRINT_CONTINUE( err, "Can't get P-List content after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		SList_Content = GetContent<Region_S>( err );										TRACE_PRINT_CONTINUE( err, "Can't get S-List content after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckContent<Region_P>( test_step.p_listContent_resulted, PList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		CheckContent<Region_S>( test_step.s_listContent_resulted, SList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after grabbing in step " + step_num_str + ":\n" + test_step.to_String() );
-		step_num++;
+						std::vector<Region_P> PList_Content = rl_manip::GetContent<Region_P>( tested_regList, err );                    TRACE_CONTINUE( err, "Can't get P-List content after initialisation in step:\n" + test_step.to_String() );
+						std::vector<Region_S> SList_Content = rl_manip::GetContent<Region_S>( tested_regList, err );                    TRACE_CONTINUE( err, "Can't get S-List content after initialisation in step:\n" + test_step.to_String() );
+						rl_check::CheckContent<Region_P>( test_step.p_listContent_initial, PList_Content, err );                        TRACE_CONTINUE( err, "Incorrect P-List content gained after initialisation in step:\n" + test_step.to_String() );
+						rl_check::CheckContent<Region_S>( test_step.s_listContent_initial, SList_Content, err );                        TRACE_CONTINUE( err, "Incorrect S-List content gained after initialisation in step:\n" + test_step.to_String() );
+
+						// Производим захват
+						CELL* grabbedReg = marker;
+						clock_t start = clock();
+						err = tested_regList->GrabRegion( test_step.intermediate_reg.size, &grabbedReg );
+						clock_t end = clock();
+						{
+							std::lock_guard<std::mutex> mut( mutex_timing );
+							sec_grab += (double)((size_t)end - (size_t)start) / CLOCKS_PER_SEC;
+						}
+						// Если ожидаемый адрес захваченного региона - null, значит запрашиваемый регион слишком велик. GrabRegion() должна вернуть ошибку, а выходной указатель - остаться неизменённым
+						if (test_step.intermediate_reg.start == nullptr) {
+							if (!err) {
+								err = std::make_shared<Error_Custom>( "Incorrect condition didn't handled (Trying to grab the region with size greater than S-List has)", PLACE(), "Log.txt" );			TRACE_CONTINUE( err, "GrabRegion() Wrong behavior" );
+							}
+							if (grabbedReg != marker) {
+								err = std::make_shared<Error_Custom>( "Output pointer has been changed during the trying to grab the region with size greater than S-List has", PLACE(), "Log.txt" );	TRACE_CONTINUE( err, "GrabRegion() Wrong behavior" );
+							}
+							err.reset();
+						}
+						// Проверяем состояние и контент P- и S-списков теперь
+						PList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( tested_regList ), err );              TRACE_CONTINUE( err, "Incorrect P-State gained after grabbing in step:\n" + test_step.to_String() );
+						SList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( tested_regList ), err );              TRACE_CONTINUE( err, "Incorrect S-State gained after grabbing in step:\n" + test_step.to_String() );
+						rl_check::CheckState( test_step.p_listState_resulted, PList_State, err );                                       TRACE_CONTINUE( err, "Incorrect P-State gained after grabbing in step:\n" + test_step.to_String() );
+						rl_check::CheckState( test_step.s_listState_resulted, SList_State, err );                                       TRACE_CONTINUE( err, "Incorrect S-State gained after grabbing in step:\n" + test_step.to_String() );
+
+						PList_Footprints = rl_manip::GetFootprints<Region_P>( tested_regList );
+						SList_Footprints = rl_manip::GetFootprints<Region_S>( tested_regList );
+						rl_check::CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );                               TRACE_CONTINUE( err, "Incorrect P-State/Footprints combo after grabbing in step:\n" + test_step.to_String() );
+						rl_check::CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );                               TRACE_CONTINUE( err, "Incorrect S-State/Footprints combo after grabbing in step:\n" + test_step.to_String() );
+
+						PList_Content = rl_manip::GetContent<Region_P>( tested_regList, err );                                          TRACE_CONTINUE( err, "Can't get P-List content after grabbing in step:\n" + test_step.to_String() );
+						SList_Content = rl_manip::GetContent<Region_S>( tested_regList, err );                                          TRACE_CONTINUE( err, "Can't get S-List content after grabbing in step:\n" + test_step.to_String() );
+						rl_check::CheckContent<Region_P>( test_step.p_listContent_resulted, PList_Content, err );                       TRACE_CONTINUE( err, "Incorrect P-List content gained after grabbing in step:\n" + test_step.to_String() );
+						rl_check::CheckContent<Region_S>( test_step.s_listContent_resulted, SList_Content, err );                       TRACE_CONTINUE( err, "Incorrect S-List content gained after grabbing in step:\n" + test_step.to_String() );
+					
+						delete marker;
+						return;
+
+					} while (0);
+					{
+						std::lock_guard<std::mutex> mut( mutex_error );
+						errors.push_back( err );
+						delete marker;
+						cts.cancel();
+					}
+				});
+		},
+		cts.get_token());
+
+	for (auto err : errors) {
+		err->Print();
 	}
-	delete marker;
-	Log::info( "Log.txt" ) << "Grabbs time summary for " << step_num << " steps is: " << sec_grab << " sec" << Log::endlog{};
-	Log::test( "Log.txt" ) << LogTest::Finished{ true };
+	Log::info( "Log.txt" ) << "Sumary time spent for grabbing: " << sec_grab << " sec" << Log::endlog{};
+	Log::test( "Log.txt" ) << LogTest::Finished{ errors.empty() };
+	if (!errors.empty()) {
+		system( "Pause" );
+	}
 	return;
 }
 
@@ -1126,347 +1111,93 @@ void RegionsList_Tester::Test_GrabbingsComplex()
 // Проверяет вставки в RegionsList (разной ширины, смежные и нет - во всём многообразии). Изначально RegionsList хранит 5 равноудалённых регионов разной ширины
 void RegionsList_Tester::Test_InsertionsComplex()
 {
-	clock_t start, end;
-    size_t step_num = 1;
-	std::string step_num_str;
-	std::string err_message;
-    Error_BasePtr err = nullptr;
+	std::vector<std::string> insertions_complex;
+	GenerateInsertionsComplex( insertions_complex );
+
+	Log::test( "Log.txt" ) << LogTest::Start{ "Test Insertions Complex", insertions_complex.size() };
+
+	std::list<Error_BasePtr> errors;
+	std::mutex error_write_mutex, time_write_mutex;
 	double sec_ins = 0.0;
 
-	GenerateInsertionsComplex();
-
-	Log::test( "Log.txt" ) << LogTest::Start{ "Test Insertions Complex", m_insertions_complex.size() };
-
-	m_tested_regList = std::make_unique<RegionsList<CELL>>(0);
-
-    // Выполняем тест-кейсы по порядку
-	for(std::string &step : m_insertions_complex)
-    {
-		Log::test() << LogTest::Progress{};
-        step_num_str = std::to_string( step_num );
-		if (err) {
-			Log::test( "Log.txt" ) << LogTest::Finished{ false };
-			system( "Pause" );	
-			return;
-		}
-		TestData t_data = ParseInsertionComplex( step, err );							TRACE_PRINT_CONTINUE( err, "Can't parse test-case in step " + step_num_str + ": " + step );
-
-        // Устанавливаем P- и S-списки в исходные состояния. Пишем в них исходный набор элементов.
-		SetState<Region_P>( t_data.p_listState_initial, err );							TRACE_PRINT_CONTINUE( err, "Can't set P-List initial state in step " + step_num_str + ": " + step );
-		SetState<Region_S>( t_data.s_listState_initial, err );							TRACE_PRINT_CONTINUE( err, "Can't set S-List initial state in step " + step_num_str + ": " + step );
-		SetContent<Region_P>( t_data.p_listContent_initial, err );						TRACE_PRINT_CONTINUE( err, "Can't set P-List initial content in step " + step_num_str + ": " + step );
-		SetContent<Region_S>( t_data.s_listContent_initial, err );						TRACE_PRINT_CONTINUE( err, "Can't set S-List initial content in step " + step_num_str + ": " + step );
-
-        // Проверяем установленное состояние и контент P- и S-списков
-		ListState PList_State = Validate_ListState( GetState<Region_P>(), err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after initialisation in step " + step_num_str + ": " + step );
-		ListState SList_State = Validate_ListState( GetState<Region_S>(), err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after initialisation in step " + step_num_str + ": " + step );
-		CheckState( t_data.p_listState_initial, PList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after initialisation in step " + step_num_str + ": " + step );
-        CheckState( t_data.s_listState_initial, SList_State, err );						TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after initialisation in step " + step_num_str + ": " + step );
-
-        ListFootprints PList_Footprints = GetFootprints<Region_P>();
-        ListFootprints SList_Footprints = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after initialisation in step " + step_num_str + ": " + step );
-		CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after initialisation in step " + step_num_str + ": " + step );
-
-		std::vector<Region_P> PList_Content = GetContent<Region_P>( err );				TRACE_PRINT_CONTINUE( err, "Can't get P-List content after initialisation in step " + step_num_str + ": " + step );
-		std::vector<Region_S> SList_Content = GetContent<Region_S>( err );				TRACE_PRINT_CONTINUE( err, "Can't get S-List content after initialisation in step " + step_num_str + ": " + step );
-		CheckContent<Region_P>( t_data.p_listContent_initial, PList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after initialisation in step " + step_num_str + ": " + step );
-		CheckContent<Region_S>( t_data.s_listContent_initial, SList_Content, err );		TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after initialisation in step " + step_num_str + ": " + step );
-
-		// Производим вставку
-		start = clock();
-		err = m_tested_regList->ReleaseRegion( t_data.intermediate_reg );					TRACE_PRINT_CONTINUE( err, "ReleaseRegion() error gained after insertion in step" + step_num_str + ": " + step );
-		end = clock();
-		sec_ins += (double)(end - start) / CLOCKS_PER_SEC;
-
-		// Проверяем состояние и контент P- и S-списков теперь
-		PList_State = Validate_ListState( GetState<Region_P>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after insertion in step " + step_num_str + ": " + step );
-		SList_State = Validate_ListState( GetState<Region_S>(), err );					TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after insertion in step " + step_num_str + ": " + step );
-		CheckState( t_data.p_listState_resulted, PList_State, err );					TRACE_PRINT_CONTINUE( err, "Incorrect P-State gained after insertion in step " + step_num_str + ": " + step );
-		CheckState( t_data.s_listState_resulted, SList_State, err );					TRACE_PRINT_CONTINUE( err, "Incorrect S-State gained after insertion in step " + step_num_str + ": " + step );
-
-		PList_Footprints = GetFootprints<Region_P>();
-		SList_Footprints = GetFootprints<Region_S>();
-		CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );			TRACE_PRINT_CONTINUE( err, "Incorrect P-State/Footprints combo after insertion in step " + step_num_str + ": " + step );
-		CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );			TRACE_PRINT_CONTINUE( err, "Incorrect S-State/Footprints combo after insertion in step " + step_num_str + ": " + step );
-
-		PList_Content = GetContent<Region_P>( err );									TRACE_PRINT_CONTINUE( err, "Can't get P-List content after insertion in step " + step_num_str + ": " + step );
-		SList_Content = GetContent<Region_S>( err );									TRACE_PRINT_CONTINUE( err, "Can't get S-List content after insertion in step " + step_num_str + ": " + step );
-		CheckContent<Region_P>( t_data.p_listContent_resulted, PList_Content, err );	TRACE_PRINT_CONTINUE( err, "Incorrect P-List content gained after insertion in step " + step_num_str + ": " + step );
-		CheckContent<Region_S>( t_data.s_listContent_resulted, SList_Content, err );	TRACE_PRINT_CONTINUE( err, "Incorrect S-List content gained after insertion in step " + step_num_str + ": " + step );
-		step_num++;
-    }
-	Log::info( "Log.txt" ) << "Insertions time summary for " << step_num << " steps is: " << sec_ins << " sec" <<  Log::endlog{};
-	Log::test( "Log.txt" ) << LogTest::Finished{ true };
-    return;
-}
-
-
-
-ListState RegionsList_Tester::Validate_ListState( const ListState& state, Error_BasePtr& err ) const
-{
-	std::string errMess( "Invalid ListState field(s):" );
-	bool ok = true;
-	if (state.capacity < state.size) {
-		errMess += "\nListState.capacity < ListState.size";
-		ok = false;
-	}
-	if (state.spaceLeft + state.spaceRight + state.size != state.capacity) {
-		errMess += "\nListState.spaceLeft + ListState.spaceRight + ListState.size != ListState.capacity";
-		ok = false;
-	}
-	if (state.begin_pos != state.spaceLeft) {
-		errMess += "\nListState.begin_pos != ListState.spaceLeft";
-		ok = false;
-	}
-	if (state.end_pos != state.spaceLeft + state.size) {
-		errMess += "\nListState.end_pos != ListState.spaceLeft + ListState.size";
-		ok = false;
-	}
-	if (!ok) {
-        errMess += "\n" + utils::to_string( state );
-		err = std::make_shared<Error_Custom>( errMess, PLACE(), "Log.txt" );
-	}
-	return state;
-}
-
-
-bool RegionsList_Tester::CheckState( const ListState& expected, const ListState& gained, Error_BasePtr& err ) const
-{
-	if (expected != gained) {
-		err = std::make_shared<Error_Custom>( "Incorrect ListState:\nExpected:\n" + utils::to_string( expected ) + "\nGained:\n" + utils::to_string( gained ), PLACE(), "Log.txt" );
-		return false;
-	}
-	return true;
-}
-
-
-template<class ListType>
-bool RegionsList_Tester::CheckContent( const std::vector<ListType>& expected, std::vector<ListType>& gained, Error_BasePtr& err ) const
-{
-	if (expected.size() != gained.size()) {
-		err = std::make_shared<Error_Custom>( "Incorrect content size:\nExpected: " + std::to_string(expected.size()) + "\nGained: " + std::to_string( gained.size() ), PLACE(), "Log.txt" );
-		return false;
-	}
-	if constexpr (std::is_same_v<ListType, Region_P> || std::is_same_v<ListType, Region_S>)
-	{
-		bool ok = true;
-		for (size_t i = 0; i < expected.size(); ++i) {
-			ok &= expected[i] == gained[i];
-		}
-		if (!ok) {
-			err = std::make_shared<Error_Custom>( "Incorrect content :\nExpected: " + utils::to_string( expected ) + "\nGained:   " + utils::to_string( gained ), PLACE(), "Log.txt" );
-		}
-		return ok;
-	}
-	else {
-		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
-		return false;
-	}
-}
-
-
-template<class ListType>
-void RegionsList_Tester::CheckFootprintsVsState( const ListState& state, const ListFootprints& footpr, Error_BasePtr& err ) const
-{
-	std::string errMess( "Incorrect ListFootprints VS ListState combination:" );
-	bool ok = true;
-
-	if (footpr.addr_begin != footpr.addr_start + (state.spaceLeft * sizeof( ListType ))) {
-		errMess += "\nListFootprints.addr_begin != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL ))";
-		ok = false;
-	}
-	if (footpr.addr_end != footpr.addr_start + (state.spaceLeft * sizeof( ListType )) + (state.size * sizeof( ListType ))) {
-		errMess += "\nListFootprints.addr_end != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL )) + (ListState.size * sizeof( CELL ))";
-		ok = false;
-	}
-	if (footpr.addr_stop != footpr.addr_start + (state.spaceLeft * sizeof( ListType )) + (state.size * sizeof( ListType )) + (state.spaceRight * sizeof( ListType ))) {
-		errMess += "\nListFootprints.addr_stop != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL )) + (ListState.size * sizeof( CELL )) + (ListState.spaceRight * sizeof( CELL ))";
-		ok = false;
-	}
-	if ((footpr.addr_stop - footpr.addr_start) / sizeof( ListType ) != state.capacity) {
-		errMess += "\n(ListFootprints.addr_stop - ListFootprints.addr_start) / sizeof( CELL ) != ListState.capacity";
-		ok = false;
-	}
-
-	if (!ok)
-	{
-		errMess += "\n" + utils::to_string( state ) + "\n" + utils::to_string( footpr );
-		err = std::make_shared<Error_Custom>( errMess, PLACE(), "Log.txt" );
-	}
-}
-
-
-template<class ListType>
-void RegionsList_Tester::SetState( const ListState& state, Error_BasePtr& err )
-{
-	// Проверяем, что устанавливаемое состояние - корректно
-	Validate_ListState( state, err );							TRACE_RETURN_VOID( err, "Can't pass ListState validation" );
-
-	if constexpr (std::is_same_v<ListType, Region_P>)
-	{
-		// Число регионов, ёмкость, свободное место справа и слева в P-List
-		m_tested_regList->m_p_list_size = state.size;
-		m_tested_regList->m_p_list_capacity = state.capacity;
-		m_tested_regList->m_p_list_spaceLeft = state.spaceLeft;
-		m_tested_regList->m_p_list_spaceRight = state.spaceRight;
-
-		// Выделяем память для P-List заново, инициализируем
-		if (m_tested_regList->m_p_list != nullptr) {
-			free( m_tested_regList->m_p_list );
-		}
-		m_tested_regList->m_p_list = reinterpret_cast<Region_P*>(calloc( state.capacity, sizeof( Region_P ) ));
-		memset( m_tested_regList->m_p_list, 0, state.capacity * sizeof( Region_P ) );
-
-		// Начало и конец элементов в P-List
-		m_tested_regList->m_p_list_begin = m_tested_regList->m_p_list + state.spaceLeft;
-		m_tested_regList->m_p_list_end = m_tested_regList->m_p_list_begin + state.size;
-	}
-	else if constexpr (std::is_same_v<ListType, Region_S>)
-	{
-		// Число регионов, ёмкость, свободное место справа и слева в S-List
-		m_tested_regList->m_s_list_size = state.size;
-		m_tested_regList->m_s_list_capacity = state.capacity;
-		m_tested_regList->m_s_list_spaceLeft = state.spaceLeft;
-		m_tested_regList->m_s_list_spaceRight = state.spaceRight;
-
-		// Выделяем память для S-List заново, инициализируем
-		if (m_tested_regList->m_s_list != nullptr) {
-			free( m_tested_regList->m_s_list );
-		}
-		m_tested_regList->m_s_list = reinterpret_cast<Region_S*>(calloc( state.capacity, sizeof( Region_S ) ));
-		memset( m_tested_regList->m_s_list, 0, state.capacity * sizeof( Region_S ) );
-
-		// Начало и конец элементов в S-List
-		m_tested_regList->m_s_list_begin = m_tested_regList->m_s_list + state.spaceLeft;
-		m_tested_regList->m_s_list_end = m_tested_regList->m_s_list_begin + state.size;
-	}
-	else {
-		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
-	}
-}
-
-template<class ListType>
-void RegionsList_Tester::SetContent( const std::vector<ListType>& content, Error_BasePtr& err )
-{
-	ListType *it;
-	ListType *end;
-
-	if constexpr (std::is_same_v<ListType, Region_P>) {
-		it = m_tested_regList->m_p_list_begin;
-		end = m_tested_regList->m_p_list_end;
-	}
-	else if constexpr (std::is_same_v<ListType, Region_S>) {
-		it = m_tested_regList->m_s_list_begin;
-		end = m_tested_regList->m_s_list_end;
-	}
-	else {
-		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
-		return;
-	}
-
-	if (it > end) {
-		err = std::make_shared<Error_Custom>( "Incorrect state of " + std::string( typeid(ListType).name() ) + "-List iterators (begin > end)", PLACE(), "Log.txt" );
-		return;
-	}
-
-	if (content.size() != end - it)	{
-		err = std::make_shared<Error_Custom>(
-			"Size of Content's vector to be set must match exactly with " + std::string( typeid(ListType).name() ) + "-List size [begin ... end].\nContent size is: " +
-			std::to_string( content.size() ) + "\n" + std::string( typeid(ListType).name() ) + "-List size is: " + std::to_string( end - it ), PLACE(), "Log.txt" );
-		return;
-	}
-
-	size_t pos = 0;
-	for (; it != end; ++it, ++pos) {
-		*it = content[pos];
-	}
-}
-
-
-template<class ListType>
-ListState RegionsList_Tester::GetState() const
-{
-	if constexpr (std::is_same_v<ListType, Region_P>) {
-		return
+	concurrency::cancellation_token_source cts;
+	concurrency::run_with_cancellation_token( 
+		[&insertions_complex, &sec_ins, &errors, &error_write_mutex, &time_write_mutex, &cts, this]()
 		{
-			m_tested_regList->m_p_list_capacity,
-			m_tested_regList->m_p_list_size,
-			m_tested_regList->m_p_list_spaceLeft,
-			m_tested_regList->m_p_list_spaceRight,
-			m_tested_regList->m_p_list_spaceLeft,										// begin pos (not address!)
-			m_tested_regList->m_p_list_spaceLeft + m_tested_regList->m_p_list_size		// end pos (not address!)
-		};
-	}
-	else if constexpr (std::is_same_v<ListType, Region_S>) {
-		return
-		{
-			m_tested_regList->m_s_list_capacity,
-			m_tested_regList->m_s_list_size,
-			m_tested_regList->m_s_list_spaceLeft,
-			m_tested_regList->m_s_list_spaceRight,
-			m_tested_regList->m_s_list_spaceLeft,										// begin pos (not address!)
-			m_tested_regList->m_s_list_spaceLeft + m_tested_regList->m_s_list_size		// end pos (not address!)
-		};
-	}
-	else
-		return ListState();
-}
+			concurrency::parallel_for_each( insertions_complex.begin(), insertions_complex.end(),
+				[&sec_ins, &errors, &error_write_mutex, &time_write_mutex, &cts]( std::string step )
+				{
+					Log::test() << LogTest::Progress{};
+					auto regList = std::make_shared<RegionsList<CELL>>( 0 );
+					Error_BasePtr err = nullptr;
 
+					do {
+						TestData t_data = ParseInsertionComplex( step, err );																	    TRACE_CONTINUE( err, "Can't parse test-case in step: " + step );
+						// Устанавливаем P- и S-списки в исходные состояния. Пишем в них исходный набор элементов.
+						rl_manip::SetState<Region_P>( t_data.p_listState_initial, regList, err );                                                   TRACE_CONTINUE( err, "Can't set P-List initial state in step: " + step );
+						rl_manip::SetState<Region_S>( t_data.s_listState_initial, regList, err );                                                   TRACE_CONTINUE( err, "Can't set S-List initial state in step: " + step );
+						rl_manip::SetContent<Region_P>( t_data.p_listContent_initial, regList, err );                                               TRACE_CONTINUE( err, "Can't set P-List initial content in step: " + step );
+						rl_manip::SetContent<Region_S>( t_data.s_listContent_initial, regList, err );                                               TRACE_CONTINUE( err, "Can't set S-List initial content in step: " + step );
 
-template<class ListType>
-ListFootprints RegionsList_Tester::GetFootprints() const
-{
-	if constexpr (std::is_same_v<ListType, Region_P>) {
-		return
-		{
-			reinterpret_cast<size_t>(m_tested_regList->m_p_list),
-			reinterpret_cast<size_t>(m_tested_regList->m_p_list) + (m_tested_regList->m_p_list_capacity * sizeof( Region_P )),
-			reinterpret_cast<size_t>(m_tested_regList->m_p_list_begin),
-			reinterpret_cast<size_t>(m_tested_regList->m_p_list_end)
-		};
-	}
-	else if constexpr (std::is_same_v<ListType, Region_S>) {
-		return
-		{
-			reinterpret_cast<size_t>(m_tested_regList->m_s_list),
-			reinterpret_cast<size_t>(m_tested_regList->m_s_list) + (m_tested_regList->m_s_list_capacity * sizeof( Region_S )),
-			reinterpret_cast<size_t>(m_tested_regList->m_s_list_begin),
-			reinterpret_cast<size_t>(m_tested_regList->m_s_list_end)
-		};
-	}
-	else
-		return ListFootprints();
-}
+						// Проверяем установленное состояние и контент P- и S-списков
+						ListState PList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                       TRACE_CONTINUE( err, "Incorrect P-State gained after initialisation in step: " + step );
+						ListState SList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                       TRACE_CONTINUE( err, "Incorrect S-State gained after initialisation in step: " + step );
+						rl_check::CheckState( t_data.p_listState_initial, PList_State, err );                                                       TRACE_CONTINUE( err, "Incorrect P-State gained after initialisation in step: " + step );
+						rl_check::CheckState( t_data.s_listState_initial, SList_State, err );                                                       TRACE_CONTINUE( err, "Incorrect S-State gained after initialisation in step: " + step );
 
+						ListFootprints PList_Footprints = rl_manip::GetFootprints<Region_P>( regList );
+						ListFootprints SList_Footprints = rl_manip::GetFootprints<Region_S>( regList );
+						rl_check::CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );                                           TRACE_CONTINUE( err, "Incorrect P-State/Footprints combo after initialisation in step: " + step );
+						rl_check::CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );                                           TRACE_CONTINUE( err, "Incorrect S-State/Footprints combo after initialisation in step: " + step );
 
-template<class ListType>
-std::vector<ListType> RegionsList_Tester::GetContent( Error_BasePtr& err )
-{
-	std::vector<ListType> out;
-	ListType* it;
-	ListType* end;
+						std::vector<Region_P> PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                       TRACE_CONTINUE( err, "Can't get P-List content after initialisation in step: " + step );
+						std::vector<Region_S> SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                       TRACE_CONTINUE( err, "Can't get S-List content after initialisation in step: " + step );
+						rl_check::CheckContent<Region_P>( t_data.p_listContent_initial, PList_Content, err );                                       TRACE_CONTINUE( err, "Incorrect P-List content gained after initialisation in step: " + step );
+						rl_check::CheckContent<Region_S>( t_data.s_listContent_initial, SList_Content, err );                                       TRACE_CONTINUE( err, "Incorrect S-List content gained after initialisation in step: " + step );
 
-	if constexpr (std::is_same_v<ListType, Region_P>) {
-		it = m_tested_regList->m_p_list_begin;
-		end = m_tested_regList->m_p_list_end;
+						// Производим вставку
+						clock_t start = clock();
+						err = regList->ReleaseRegion( t_data.intermediate_reg );                                                                    TRACE_CONTINUE( err, "ReleaseRegion() error gained after insertion in step: " + step );
+						clock_t end = clock();
+						{
+							std::lock_guard l( time_write_mutex );
+							sec_ins += (double)((size_t)end - (size_t)start) / CLOCKS_PER_SEC;
+						}
+						// Проверяем состояние и контент P- и S-списков теперь
+						PList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_P>( regList ), err );                                 TRACE_CONTINUE( err, "Incorrect P-State gained after insertion in step: " + step );
+						SList_State = rl_check::Validate_ListState( rl_manip::GetState<Region_S>( regList ), err );                                 TRACE_CONTINUE( err, "Incorrect S-State gained after insertion in step: " + step );
+						rl_check::CheckState( t_data.p_listState_resulted, PList_State, err );                                                      TRACE_CONTINUE( err, "Incorrect P-State gained after insertion in step: " + step );
+						rl_check::CheckState( t_data.s_listState_resulted, SList_State, err );                                                      TRACE_CONTINUE( err, "Incorrect S-State gained after insertion in step: " + step );
+
+						PList_Footprints = rl_manip::GetFootprints<Region_P>( regList );
+						SList_Footprints = rl_manip::GetFootprints<Region_S>( regList );
+						rl_check::CheckFootprintsVsState<Region_P>( PList_State, PList_Footprints, err );                                           TRACE_CONTINUE( err, "Incorrect P-State/Footprints combo after insertion in step: " + step );
+						rl_check::CheckFootprintsVsState<Region_S>( SList_State, SList_Footprints, err );                                           TRACE_CONTINUE( err, "Incorrect S-State/Footprints combo after insertion in step: " + step );
+
+						PList_Content = rl_manip::GetContent<Region_P>( regList, err );                                                             TRACE_CONTINUE( err, "Can't get P-List content after insertion in step: " + step );
+						SList_Content = rl_manip::GetContent<Region_S>( regList, err );                                                             TRACE_CONTINUE( err, "Can't get S-List content after insertion in step: " + step );
+						rl_check::CheckContent<Region_P>( t_data.p_listContent_resulted, PList_Content, err );                                      TRACE_CONTINUE( err, "Incorrect P-List content gained after insertion in step: " + step );
+						rl_check::CheckContent<Region_S>( t_data.s_listContent_resulted, SList_Content, err );                                      TRACE_CONTINUE( err, "Incorrect S-List content gained after insertion in step: " + step );
+						return;
+
+					} while (0);
+					{
+						std::lock_guard l( error_write_mutex );
+						errors.push_back( err );
+					}
+					cts.cancel();
+				}
+			);
+		}, cts.get_token() );
+
+	for (auto err : errors) {
+		err->Print();
 	}
-	else if constexpr (std::is_same_v<ListType, Region_S>) {
-		it = m_tested_regList->m_s_list_begin;
-		end = m_tested_regList->m_s_list_end;
+	Log::info( "Log.txt" ) << "Sumary time spent for insertions: " << sec_ins << " sec" << Log::endlog{};
+	Log::test( "Log.txt" ) << LogTest::Finished{ errors.empty() };
+	if (!errors.empty()) {
+		system( "Pause" );
 	}
-	else {
-		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
-		return;
-	}
-	if (it > end) {
-		err = std::make_shared<Error_Custom>( "Incorrect state of " + std::string( typeid(ListType).name() ) + "-List iterators (begin > end)", PLACE(), "Log.txt" );
-		return out;
-	}
-	for (; it != end; ++it) {
-		out.push_back( *it );
-	}
-	return out;
 }
 
 
@@ -1491,7 +1222,7 @@ std::vector<std::array<uint8_t, InsertionPlace::P5_Finish>> CreateInitialSizesSe
 }
 
 
-void RegionsList_Tester::GenerateGrabsComplex()
+void RegionsList_Tester::GenerateGrabsComplex( std::vector<TestData> &out_grabbs )
 {
 	Log::test( "Log.txt" ) << LogTest::Start{ "Generate Insertions For Test Grabbings Complex", 1 };
 
@@ -1534,7 +1265,7 @@ void RegionsList_Tester::GenerateGrabsComplex()
 				if (index == s_list_resulted.size()) {
 					td.p_listContent_resulted = p_list_initial;
 					td.s_listContent_resulted = s_list_initial;
-					m_grabbs_complex.push_back( td );
+					out_grabbs.push_back( td );
 					continue;
 				}
 				td.intermediate_reg.start = s_list_resulted[index].start;
@@ -1621,7 +1352,7 @@ void RegionsList_Tester::GenerateGrabsComplex()
 				}
 				td.p_listContent_resulted = p_list_resulted;
 				td.s_listContent_resulted = s_list_resulted;
-				m_grabbs_complex.push_back( td );
+				out_grabbs.push_back( td );
 			}
 		}
 	}
@@ -1635,72 +1366,73 @@ void RegionsList_Tester::GenerateGrabsComplex()
  *	результирующие состояния Size- и Pointer-списков.											    |
  *		Сценарий используется тестом "ComplexInsertions".											|
  *_________________________________________________________________________________________________*/
-void RegionsList_Tester::GenerateInsertionsComplex()
+void RegionsList_Tester::GenerateInsertionsComplex( std::vector<std::string>& out_insertions_str )
 {
 	Log::test( "Log.txt" ) << LogTest::Start{ "Generate Insertions For Test Insertions Complex", 1 };
 
 	// Формируем все возможные комбинации исходных Size для 5 регионов списка. Max size = 5, Min size = 1.
 	std::vector<std::array<uint8_t, InsertionPlace::P5_Finish>> initial_sizes = CreateInitialSizesSet();
-	
-	std::vector<Region_P> p_list_initial( InsertionPlace::P5_Finish );	// Исходный P-список
-	std::vector<Region_S> s_list_initial( 0 );	// Исходный S-список
 
-	int count = 0;
-	for ( size_t n = 0; n < initial_sizes.size(); ++n )
-	{
-		// Формируем исходный P-список
-		for ( int i = 0; i < InsertionPlace::P5_Finish; ++i )
+	std::mutex write_ins_mutex;
+
+	concurrency::parallel_for_each( initial_sizes.begin(), initial_sizes.end(), [&out_insertions_str, &write_ins_mutex]( std::array<uint8_t, InsertionPlace::P5_Finish> sizes )
 		{
-			Region_P reg = { Ins_complex::regPtrs[i], initial_sizes[n][i] };
-			p_list_initial[i] = reg;
-		}
-		// Формируем исходный S-список на основе P-списка (сортируем эл-ты сначала по Size, затем по Pointer)
-		utils::SListFromPList( p_list_initial, s_list_initial );
+			std::vector<Region_P> p_list_initial( InsertionPlace::P5_Finish );  // Исходный P-список
+			std::vector<Region_S> s_list_initial( 0 );                          // Исходный S-список
 
-        std::string empty_RegP_str = std::string(utils::to_string(p_list_initial[0]).size(), ' ');
-        std::string empty_RegS_str = std::string("[") + std::string(utils::to_string(s_list_initial[0]).size() - 2, '-') + std::string("]");
-
-		// Формируем вставки. Участков для вставки: "regNum + 1" - в начало, в конец и между регионами списка.
-		// Начало и конец свободного участка для вставки
-		CELL *start = Ins_complex::mem;
-		CELL *stop = Ins_complex::regPtrs[0];
-
-		// Перебор регионов
-		for ( auto const &i : Ins_complex::InsertionPlaces )
-		{
-			std::vector<Region_P> insertions;		// Вставки на данном участке
-			size_t insertPosNum = stop - start;		// Число позиций для вставки на участке
-			
-			for ( size_t p = 0; p < insertPosNum; ++p ) {	// Перебор всех позиций участка
-				for ( size_t s = 1; s <= insertPosNum - p; ++s ) {	// Перебор возможных size вставки
-					insertions.push_back( { start + p, s } );	// Генерим вставку
-				}
-			}
-			// Перебор состояний LR-полей списка (L0R0, L0R1, L1R0, L1R1)
-			for ( const auto &f : Ins_complex::FieldStates )
+			// Формируем исходный P-список
+			for (int i = 0; i < InsertionPlace::P5_Finish; ++i)
 			{
-				// Перебор сгенеренных вставок, определение исходного состояния P-списка
-				for ( const auto &reg : insertions )
+				Region_P reg = { Ins_complex::regPtrs[i], sizes[i] };
+				p_list_initial[i] = reg;
+			}
+			// Формируем исходный S-список на основе P-списка (сортируем эл-ты сначала по Size, затем по Pointer)
+			utils::SListFromPList( p_list_initial, s_list_initial );
+
+			std::string empty_RegP_str = std::string( utils::to_string( p_list_initial[0] ).size(), ' ' );
+			std::string empty_RegS_str = std::string( "[" ) + std::string( utils::to_string( s_list_initial[0] ).size() - 2, '-' ) + std::string( "]" );
+
+			// Формируем вставки. Участков для вставки: "regNum + 1" - в начало, в конец и между регионами списка.
+			// Начало и конец свободного участка для вставки
+			CELL* start = Ins_complex::mem;
+			CELL* stop = Ins_complex::regPtrs[0];
+
+			// Перебор регионов
+			for (auto const& i : Ins_complex::InsertionPlaces)
+			{
+				std::vector<Region_P> insertions;		// Вставки на данном участке
+				size_t insertPosNum = stop - start;		// Число позиций для вставки на участке
+
+				for (size_t p = 0; p < insertPosNum; ++p) {	// Перебор всех позиций участка
+					for (size_t s = 1; s <= insertPosNum - p; ++s) {	// Перебор возможных size вставки
+						insertions.push_back( { start + p, s } );	// Генерим вставку
+					}
+				}
+				// Перебор состояний LR-полей списка (L0R0, L0R1, L1R0, L1R1)
+				for (const auto& f : Ins_complex::FieldStates)
 				{
-					std::vector<Region_P> p_list_resulted = p_list_initial;
-					std::vector<Region_S> s_list_resulted = s_list_initial;
-					std::string p_state, s_state, p_content, s_content;
+					// Перебор сгенеренных вставок, определение исходного состояния P-списка
+					for (const auto& reg : insertions)
+					{
+						std::vector<Region_P> p_list_resulted = p_list_initial;
+						std::vector<Region_S> s_list_resulted = s_list_initial;
+						std::string p_state, s_state, p_content, s_content;
 
-					Region_S to_del_1, to_del_2, to_ins;
-					Region_P *left, *right;
-					left = right = nullptr;
+						Region_S to_del_1, to_del_2, to_ins;
+						Region_P* left, * right;
+						left = right = nullptr;
 
-					if ( i < InsertionPlace::P5_Finish ) {
-						right = &p_list_resulted[i];
-					}
-					if ( i ) {
-						left = &p_list_resulted[i - 1ULL];
-					}
-					switch ( i ) {
-						// Если тестим вставки в начало (слева от первого региона в списке)
+						if (i < InsertionPlace::P5_Finish) {
+							right = &p_list_resulted[i];
+						}
+						if (i) {
+							left = &p_list_resulted[i - 1ULL];
+						}
+						switch (i) {
+							// Если тестим вставки в начало (слева от первого региона в списке)
 						case InsertionPlace::Start_P1: {
 							// | #[0]   [1]   [2]   [3]   [4]  |
-							if ( utils::CheckAdj( reg, *right ) )
+							if (utils::CheckAdj( reg, *right ))
 							{
 								to_del_1 = utils::RegionPtoS( *right );
 								right->start = reg.start;
@@ -1738,11 +1470,11 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 							}
 							break;
 						}
-						// Если тестим вставки в конец (справа от последнего региона в списке)
+													 // Если тестим вставки в конец (справа от последнего региона в списке)
 						case InsertionPlace::P5_Finish:
 						{
 							// |  [0]   [1]   [2]   [3]   [4]# |
-							if ( utils::CheckAdj( *left, reg ) )
+							if (utils::CheckAdj( *left, reg ))
 							{
 								to_del_1 = utils::RegionPtoS( *left );
 								left->size += reg.size;
@@ -1782,13 +1514,13 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 						// Если тестим вставки между регионами
 						default:
 						{
-							if ( utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_Both )
+							if (utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_Both)
 							{
-								switch ( i ) {
-									case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_RL]; break; } // |  [0]###[1]   [2]   [3]   [4]  |
-									case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_RL]; break; } // |  [0]   [1]###[2]   [3]   [4]  |
-									case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_RL]; break; } // |  [0]   [1]   [2]###[3]   [4]  |
-									case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_RL]; break; } // |  [0]   [1]   [2]   [3]###[4]  |
+								switch (i) {
+								case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_RL]; break; } // |  [0]###[1]   [2]   [3]   [4]  |
+								case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_RL]; break; } // |  [0]   [1]###[2]   [3]   [4]  |
+								case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_RL]; break; } // |  [0]   [1]   [2]###[3]   [4]  |
+								case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_RL]; break; } // |  [0]   [1]   [2]   [3]###[4]  |
 								}
 
 								to_del_1 = utils::RegionPtoS( *left );
@@ -1809,13 +1541,13 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 								s_content = " S-Content: " + utils::to_string( s_list_initial ) + " =>" + utils::to_string( to_del_1 ) + " =>" + utils::to_string( to_del_2 ) + " <=" + utils::to_string( to_ins ) +
 									" = " + utils::to_string( s_list_resulted ) + "         ";
 							}
-							else if ( utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_Left )
+							else if (utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_Left)
 							{
-								switch ( i ) {
-									case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_L]; break; } // |  [0]#  [1]   [2]   [3]   [4]  |
-									case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_L]; break; } // |  [0]   [1]#  [2]   [3]   [4]  |
-									case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_L]; break; } // |  [0]   [1]   [2]#  [3]   [4]  |
-									case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_L]; break; } // |  [0]   [1]   [2]   [3]#  [4]  |
+								switch (i) {
+								case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_L]; break; } // |  [0]#  [1]   [2]   [3]   [4]  |
+								case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_L]; break; } // |  [0]   [1]#  [2]   [3]   [4]  |
+								case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_L]; break; } // |  [0]   [1]   [2]#  [3]   [4]  |
+								case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_L]; break; } // |  [0]   [1]   [2]   [3]#  [4]  |
 								}
 
 								to_del_1 = utils::RegionPtoS( *left );
@@ -1833,13 +1565,13 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 								s_content = " S-Content: " + utils::to_string( s_list_initial ) + " =>" + utils::to_string( to_del_1 ) + " =>" + empty_RegS_str + " <=" + utils::to_string( to_ins ) +
 									" = " + utils::to_string( s_list_resulted ) + "         ";
 							}
-							else if ( utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_NONE )
+							else if (utils::CheckAdj( *left, reg, *right ) == Adjacency::Adj_NONE)
 							{
-								switch ( i ) {
-									case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_None]; break; } // |  [0] # [1]   [2]   [3]   [4]  |
-									case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_None]; break; } // |  [0]   [1] # [2]   [3]   [4]  |
-									case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_None]; break; } // |  [0]   [1]   [2] # [3]   [4]  |
-									case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_None]; break; } // |  [0]   [1]   [2]   [3] # [4]  |
+								switch (i) {
+								case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_None]; break; } // |  [0] # [1]   [2]   [3]   [4]  |
+								case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_None]; break; } // |  [0]   [1] # [2]   [3]   [4]  |
+								case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_None]; break; } // |  [0]   [1]   [2] # [3]   [4]  |
+								case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_None]; break; } // |  [0]   [1]   [2]   [3] # [4]  |
 								}
 
 								to_ins = utils::RegionPtoS( reg );
@@ -1857,11 +1589,11 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 							}
 							else
 							{
-								switch ( i ) {
-									case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_R]; break; } // |  [0]  #[1]   [2]   [3]   [4]  |
-									case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_R]; break; } // |  [0]   [1]  #[2]   [3]   [4]  |
-									case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_R]; break; } // |  [0]   [1]   [2]  #[3]   [4]  |
-									case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_R]; break; } // |  [0]   [1]   [2]   [3]  #[4]  |
+								switch (i) {
+								case InsertionPlace::P1_P2: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P1_P2_Adj_R]; break; } // |  [0]  #[1]   [2]   [3]   [4]  |
+								case InsertionPlace::P2_P3: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P2_P3_Adj_R]; break; } // |  [0]   [1]  #[2]   [3]   [4]  |
+								case InsertionPlace::P3_P4: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P3_P4_Adj_R]; break; } // |  [0]   [1]   [2]  #[3]   [4]  |
+								case InsertionPlace::P4_P5: { p_state = Ins_complex::P_StatesFlowDesc[f][Ins_complex::P4_P5_Adj_R]; break; } // |  [0]   [1]   [2]   [3]  #[4]  |
 								}
 								to_del_1 = utils::RegionPtoS( *right );
 								right->start = reg.start;
@@ -1881,18 +1613,22 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 							}
 							break;
 						}
+						}
+						{
+							std::lock_guard l( write_ins_mutex );
+							out_insertions_str.push_back( p_state + s_state + p_content + s_content );
+						}
 					}
-					m_insertions_complex.push_back( p_state + s_state + p_content + s_content );
 				}
+				// Двигаемся к следующему участку
+				if (i == InsertionPlace::P5_Finish)
+					break;
+				start = stop + p_list_initial[i].size;
+				stop = Ins_complex::regPtrs[i + 1];
 			}
-			// Двигаемся к следующему участку
-			if ( i == InsertionPlace::P5_Finish )
-				break;
-			start = stop + p_list_initial[i].size;
-			stop = Ins_complex::regPtrs[i + 1];
+			s_list_initial.clear();
 		}
-		s_list_initial.clear();
-	}
+	);
 	Log::test( "Log.txt" ) << LogTest::Finished{ true };
 }
 
@@ -1900,7 +1636,7 @@ void RegionsList_Tester::GenerateInsertionsComplex()
 /*___________________________________________________________________________________________________
  *       Парсит строку тесткейса, формируя набор данных для проведения теста "ComplexInsertions".    |
  *__________________________________________________________________________________________________*/
-TestData RegionsList_Tester::ParseInsertionComplex( const std::string &test_case, Error_BasePtr &err) const
+TestData ParseInsertionComplex( const std::string &test_case, Error_BasePtr &err)
 {
 	std::string err_message;
 
@@ -1989,7 +1725,7 @@ TestData RegionsList_Tester::ParseInsertionComplex( const std::string &test_case
  *   C06,S05,L01,R00,B01,E06 (примерно). Элементы могут меняться местами, содержать разные цифры, но |
  *   наличие элементов CSLRBE обязательно.                                                           |
  *__________________________________________________________________________________________________*/
-ListState RegionsList_Tester::ParseListState( const std::string &list_state, Error_BasePtr &err ) const
+ListState ParseListState( const std::string &list_state, Error_BasePtr &err )
 {
     Regex C_reg( "C\\d+" );
     Regex S_reg( "S\\d+" );
@@ -2019,4 +1755,270 @@ ListState RegionsList_Tester::ParseListState( const std::string &list_state, Err
         (uint32_t)std::stoull(C.substr(1, C.size() - 1)), (uint32_t)std::stoull(S.substr(1, S.size() - 1)), (uint32_t)std::stoull(L.substr(1, L.size() - 1)),
         (uint32_t)std::stoull(R.substr(1, R.size() - 1)), (uint32_t)std::stoull(B.substr(1, B.size() - 1)), (uint32_t)std::stoull(E.substr(1, E.size() - 1))
     };
+}
+
+
+template<class ListType>
+inline void rl_manip::SetState( const ListState& state, std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err )
+{
+	// Проверяем, что устанавливаемое состояние - корректно
+	rl_check::Validate_ListState( state, err );							TRACE_RETURN_VOID( err, "Can't pass ListState validation" );
+
+	if constexpr (std::is_same_v<ListType, Region_P>)
+	{
+		// Число регионов, ёмкость, свободное место справа и слева в P-List
+		regList->m_p_list_size = state.size;
+		regList->m_p_list_capacity = state.capacity;
+		regList->m_p_list_spaceLeft = state.spaceLeft;
+		regList->m_p_list_spaceRight = state.spaceRight;
+
+		// Выделяем память для P-List заново, инициализируем
+		if (regList->m_p_list != nullptr) {
+			free( regList->m_p_list );
+		}
+		regList->m_p_list = reinterpret_cast<Region_P*>(calloc( state.capacity, sizeof( Region_P ) ));
+		memset( regList->m_p_list, 0, state.capacity * sizeof( Region_P ) );
+
+		// Начало и конец элементов в P-List
+		regList->m_p_list_begin = regList->m_p_list + state.spaceLeft;
+		regList->m_p_list_end = regList->m_p_list_begin + state.size;
+	}
+	else if constexpr (std::is_same_v<ListType, Region_S>)
+	{
+		// Число регионов, ёмкость, свободное место справа и слева в S-List
+		regList->m_s_list_size = state.size;
+		regList->m_s_list_capacity = state.capacity;
+		regList->m_s_list_spaceLeft = state.spaceLeft;
+		regList->m_s_list_spaceRight = state.spaceRight;
+
+		// Выделяем память для S-List заново, инициализируем
+		if (regList->m_s_list != nullptr) {
+			free( regList->m_s_list );
+		}
+		regList->m_s_list = reinterpret_cast<Region_S*>(calloc( state.capacity, sizeof( Region_S ) ));
+		memset( regList->m_s_list, 0, state.capacity * sizeof( Region_S ) );
+
+		// Начало и конец элементов в S-List
+		regList->m_s_list_begin = regList->m_s_list + state.spaceLeft;
+		regList->m_s_list_end = regList->m_s_list_begin + state.size;
+	}
+	else {
+		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
+	}
+}
+
+
+template<class ListType>
+inline void rl_manip::SetContent( const std::vector<ListType>& content, std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err )
+{
+	ListType* it;
+	ListType* end;
+
+	if constexpr (std::is_same_v<ListType, Region_P>) {
+		it = regList->m_p_list_begin;
+		end = regList->m_p_list_end;
+	}
+	else if constexpr (std::is_same_v<ListType, Region_S>) {
+		it = regList->m_s_list_begin;
+		end = regList->m_s_list_end;
+	}
+	else {
+		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
+		return;
+	}
+	if (it > end) {
+		err = std::make_shared<Error_Custom>( "Incorrect state of " + std::string( typeid(ListType).name() ) + "-List iterators (begin > end)", PLACE(), "Log.txt" );
+		return;
+	}
+	if (content.size() != end - it) {
+		err = std::make_shared<Error_Custom>(
+			"Size of Content's vector to be set must match exactly with " + std::string( typeid(ListType).name() ) + "-List size [begin ... end].\nContent size is: " +
+			std::to_string( content.size() ) + "\n" + std::string( typeid(ListType).name() ) + "-List size is: " + std::to_string( end - it ), PLACE(), "Log.txt" );
+		return;
+	}
+	size_t pos = 0;
+	for (; it != end; ++it, ++pos) {
+		*it = content[pos];
+	}
+}
+
+
+template<class ListType>
+inline ListState rl_manip::GetState( std::shared_ptr<RegionsList<CELL>> regList )
+{
+	if constexpr (std::is_same_v<ListType, Region_P>) {
+		return
+		{
+			regList->m_p_list_capacity,
+			regList->m_p_list_size,
+			regList->m_p_list_spaceLeft,
+			regList->m_p_list_spaceRight,
+			regList->m_p_list_spaceLeft,								// begin pos (not address!)
+			regList->m_p_list_spaceLeft + regList->m_p_list_size		// end pos (not address!)
+		};
+	}
+	else if constexpr (std::is_same_v<ListType, Region_S>) {
+		return
+		{
+			regList->m_s_list_capacity,
+			regList->m_s_list_size,
+			regList->m_s_list_spaceLeft,
+			regList->m_s_list_spaceRight,
+			regList->m_s_list_spaceLeft,								// begin pos (not address!)
+			regList->m_s_list_spaceLeft + regList->m_s_list_size		// end pos (not address!)
+		};
+	} else {
+		return ListState();
+	}
+}
+
+
+template<class ListType>
+inline ListFootprints rl_manip::GetFootprints( std::shared_ptr<RegionsList<CELL>> regList )
+{
+	if constexpr (std::is_same_v<ListType, Region_P>) {
+		return
+		{
+			reinterpret_cast<size_t>(regList->m_p_list),
+			reinterpret_cast<size_t>(regList->m_p_list) + (regList->m_p_list_capacity * sizeof( Region_P )),
+			reinterpret_cast<size_t>(regList->m_p_list_begin),
+			reinterpret_cast<size_t>(regList->m_p_list_end)
+		};
+	}
+	else if constexpr (std::is_same_v<ListType, Region_S>) {
+		return
+		{
+			reinterpret_cast<size_t>(regList->m_s_list),
+			reinterpret_cast<size_t>(regList->m_s_list) + (regList->m_s_list_capacity * sizeof( Region_S )),
+			reinterpret_cast<size_t>(regList->m_s_list_begin),
+			reinterpret_cast<size_t>(regList->m_s_list_end)
+		};
+	} else {
+		return ListFootprints();
+	}
+}
+
+
+template<class ListType>
+inline std::vector<ListType> rl_manip::GetContent( std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err )
+{
+	std::vector<ListType> out;
+	ListType* it;
+	ListType* end;
+
+	if constexpr (std::is_same_v<ListType, Region_P>) {
+		it = regList->m_p_list_begin;
+		end = regList->m_p_list_end;
+	}
+	else if constexpr (std::is_same_v<ListType, Region_S>) {
+		it = regList->m_s_list_begin;
+		end = regList->m_s_list_end;
+	}
+	else {
+		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
+		return;
+	}
+	if (it > end) {
+		err = std::make_shared<Error_Custom>( "Incorrect state of " + std::string( typeid(ListType).name() ) + "-List iterators (begin > end)", PLACE(), "Log.txt" );
+		return out;
+	}
+	for (; it != end; ++it) {
+		out.push_back( *it );
+	}
+	return out;
+}
+
+
+
+ListState rl_check::Validate_ListState( const ListState& state, Error_BasePtr& err )
+{
+	std::string errMess( "Invalid ListState field(s):" );
+	bool ok = true;
+	if (state.capacity < state.size) {
+		errMess += "\nListState.capacity < ListState.size";
+		ok = false;
+	}
+	if (state.spaceLeft + state.spaceRight + state.size != state.capacity) {
+		errMess += "\nListState.spaceLeft + ListState.spaceRight + ListState.size != ListState.capacity";
+		ok = false;
+	}
+	if (state.begin_pos != state.spaceLeft) {
+		errMess += "\nListState.begin_pos != ListState.spaceLeft";
+		ok = false;
+	}
+	if (state.end_pos != state.spaceLeft + state.size) {
+		errMess += "\nListState.end_pos != ListState.spaceLeft + ListState.size";
+		ok = false;
+	}
+	if (!ok) {
+		errMess += "\n" + utils::to_string( state );
+		err = std::make_shared<Error_Custom>( errMess, PLACE(), "Log.txt" );
+	}
+	return state;
+}
+
+
+bool rl_check::CheckState( const ListState& expected, const ListState& gained, Error_BasePtr& err )
+{
+	if (expected != gained) {
+		err = std::make_shared<Error_Custom>( "Incorrect ListState:\nExpected:\n" + utils::to_string( expected ) + "\nGained:\n" + utils::to_string( gained ), PLACE(), "Log.txt" );
+		return false;
+	}
+	return true;
+}
+
+
+template<class ListType>
+bool rl_check::CheckContent( const std::vector<ListType>& expected, std::vector<ListType>& gained, Error_BasePtr& err )
+{
+	if (expected.size() != gained.size()) {
+		err = std::make_shared<Error_Custom>( "Incorrect content size:\nExpected: " + std::to_string( expected.size() ) + "\nGained: " + std::to_string( gained.size() ), PLACE(), "Log.txt" );
+		return false;
+	}
+	if constexpr (std::is_same_v<ListType, Region_P> || std::is_same_v<ListType, Region_S>)
+	{
+		bool ok = true;
+		for (size_t i = 0; i < expected.size(); ++i) {
+			ok &= expected[i] == gained[i];
+		}
+		if (!ok) {
+			err = std::make_shared<Error_Custom>( "Incorrect content :\nExpected: " + utils::to_string( expected ) + "\nGained:   " + utils::to_string( gained ), PLACE(), "Log.txt" );
+		}
+		return ok;
+	}
+	else {
+		err = std::make_shared<Error_Custom>( "Undefined ListType received: " + std::string( typeid(ListType).name() ), PLACE(), "Log.txt" );
+		return false;
+	}
+}
+
+
+template<class ListType>
+void rl_check::CheckFootprintsVsState( const ListState& state, const ListFootprints& footpr, Error_BasePtr& err )
+{
+	std::string errMess( "Incorrect ListFootprints VS ListState combination:" );
+	bool ok = true;
+
+	if (footpr.addr_begin != footpr.addr_start + (state.spaceLeft * sizeof( ListType ))) {
+		errMess += "\nListFootprints.addr_begin != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL ))";
+		ok = false;
+	}
+	if (footpr.addr_end != footpr.addr_start + (state.spaceLeft * sizeof( ListType )) + (state.size * sizeof( ListType ))) {
+		errMess += "\nListFootprints.addr_end != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL )) + (ListState.size * sizeof( CELL ))";
+		ok = false;
+	}
+	if (footpr.addr_stop != footpr.addr_start + (state.spaceLeft * sizeof( ListType )) + (state.size * sizeof( ListType )) + (state.spaceRight * sizeof( ListType ))) {
+		errMess += "\nListFootprints.addr_stop != ListFootprints.addr_start + (ListState.spaceLeft * sizeof( CELL )) + (ListState.size * sizeof( CELL )) + (ListState.spaceRight * sizeof( CELL ))";
+		ok = false;
+	}
+	if ((footpr.addr_stop - footpr.addr_start) / sizeof( ListType ) != state.capacity) {
+		errMess += "\n(ListFootprints.addr_stop - ListFootprints.addr_start) / sizeof( CELL ) != ListState.capacity";
+		ok = false;
+	}
+
+	if (!ok)
+	{
+		errMess += "\n" + utils::to_string( state ) + "\n" + utils::to_string( footpr );
+		err = std::make_shared<Error_Custom>( errMess, PLACE(), "Log.txt" );
+	}
 }
