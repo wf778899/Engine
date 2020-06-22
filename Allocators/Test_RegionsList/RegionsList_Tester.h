@@ -1,10 +1,12 @@
 #pragma once
 
-#include "RegionsList.hpp"
-#include "Globals.h"
 #include "Error_Base.h"
+#include "Globals.h"
+#include "RegionsList.hpp"
 
 #include <memory>
+
+
 template<class T> class RegionsList;
 
 using Region_P = RegionP<CELL>;
@@ -15,8 +17,6 @@ struct TestData;
 class RegionsList_Tester
 {
 public:
-	RegionsList_Tester();
-
 	// ѕровер€ет вставку уже существующего региона в RegionsList
 	void Test_DoubleInserion();
 
@@ -66,45 +66,50 @@ public:
 	void Test_InsertionsComplex();
 
 private:
-	ListState Validate_ListState( const ListState& state, Error_BasePtr& err ) const;
+	void GenerateInsertionsComplex( std::vector<std::string>& out_insertions_str );
 
-    bool CheckState( const ListState &expected, const ListState &gained, Error_BasePtr &err ) const;
-
-	template<class ListType>
-	bool CheckContent( const std::vector<ListType>& expected, std::vector<ListType>& gained, Error_BasePtr& err ) const;
-
-	template<class ListType>
-	void CheckFootprintsVsState( const ListState& state, const ListFootprints& footpr, Error_BasePtr& err ) const;
-
-	template<class ListType>
-	void SetState( const ListState& state, Error_BasePtr& err );
-
-	template<class ListType>
-	void SetContent( const std::vector<ListType>& s_vec, Error_BasePtr& err );
-
-	template<class ListType>
-	ListState GetState() const;
-
-	template<class ListType>
-	ListFootprints GetFootprints() const;
-
-	template<class ListType>
-	std::vector<ListType> GetContent( Error_BasePtr& err );
-
-	void GenerateInsertionsComplex();
-
-	void GenerateGrabsComplex();
-
-    TestData ParseInsertionComplex(const std::string &test_case, Error_BasePtr &err) const;
-
-    ListState ParseListState( const std::string &list_state, Error_BasePtr &err) const;
-
-	std::unique_ptr<RegionsList<CELL>> m_tested_regList;
-
-	std::vector<std::string> m_insertions_complex;
-	std::vector<TestData> m_grabbs_complex;
-	size_t m_ins_complex_testCasesCount;
+	void GenerateGrabsComplex( std::vector<TestData>& out_grabbs );
 };
+
+
+class rl_manip
+{
+public:
+	template<class ListType>
+	static void SetState( const ListState& state, std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err );
+
+	template<class ListType>
+	static void SetContent( const std::vector<ListType>& content, std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err );
+
+	template<class ListType>
+	static ListState GetState( std::shared_ptr<RegionsList<CELL>> regList );
+
+	template<class ListType>
+	static ListFootprints GetFootprints( std::shared_ptr<RegionsList<CELL>> regList );
+
+	template<class ListType>
+	static std::vector<ListType> GetContent( std::shared_ptr<RegionsList<CELL>> regList, Error_BasePtr& err );
+};
+
+
+class rl_check
+{
+public:
+	static ListState Validate_ListState( const ListState& state, Error_BasePtr& err );
+
+	static bool CheckState( const ListState& expected, const ListState& gained, Error_BasePtr& err );
+
+	template<class ListType>
+	static bool CheckContent( const std::vector<ListType>& expected, std::vector<ListType>& gained, Error_BasePtr& err );
+
+	template<class ListType>
+	static void CheckFootprintsVsState( const ListState& state, const ListFootprints& footpr, Error_BasePtr& err );
+};
+
+
+static TestData ParseInsertionComplex( const std::string& test_case, Error_BasePtr& err );
+
+static ListState ParseListState( const std::string& list_state, Error_BasePtr& err );
 
 
 /* «аполн€етс€ парсером при обработке текста с набором тестов из "insertions_complex.txt" */
@@ -124,5 +129,12 @@ struct TestData
 
 	Region_P intermediate_reg;		// »спользуетс€ при тесте и вставок и удалений
 
-	std::string to_String() const;
+	std::string to_String() const {
+		return
+			"P-State initial:  " + utils::to_string( p_listState_initial ) + "\nP-State resulted: " + utils::to_string( p_listState_resulted ) +
+			"\nS-State initial:  " + utils::to_string( s_listState_initial ) + "\nS-State resulted: " + utils::to_string( s_listState_resulted ) +
+			"\nP-Content initial:  " + utils::to_string( p_listContent_initial ) + "\nP-Content resulted: " + utils::to_string( p_listContent_resulted ) +
+			"\nS-Content initial:  " + utils::to_string( s_listContent_initial ) + "\nS-Content resulted: " + utils::to_string( s_listContent_resulted ) +
+			"\nIntermediate RegionP: " + utils::to_string( intermediate_reg );
+	}
 };

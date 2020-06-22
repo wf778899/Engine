@@ -8,6 +8,7 @@
 *.log
 *.obj
 *.pdb
+*.txt
 *.user
 .vs
 intermediate/
