@@ -11,13 +11,13 @@
 
 static const uint8_t g_minimum_capacity = 3; // Не трогать
 
-class RegionsList_Tester;
+class rl_manip;
 
 template<class T>
 class RegionsList
 {
 public:
-	friend class RegionsList_Tester;
+	friend class rl_manip;
 
 	RegionsList( size_t capacity );
 
